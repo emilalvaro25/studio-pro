@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob as GenAIBlob } from '@google/genai';
 import { decode, encode, decodeAudioData } from '../services/audioUtils';
 import { useAppContext } from '../App';
@@ -8,6 +9,17 @@ import {
     Bot, User, PhoneIncoming, Clock, FileText, Phone, PhoneOff, Mic, MicOff, Volume2, 
     Delete, Circle, Pause, Play as PlayIcon, ArrowLeft, Search 
 } from 'lucide-react';
+
+// --- Supabase Client Helper ---
+const getSupabaseClient = (): SupabaseClient | null => {
+    const url = localStorage.getItem('supabaseUrl');
+    const key = localStorage.getItem('supabaseAnonKey');
+    if (url && key) {
+        return createClient(url, key);
+    }
+    return null;
+};
+
 
 // --- Constants and Helpers from former Calls.tsx ---
 const formatDuration = (ms: number) => {
@@ -199,24 +211,75 @@ const CallHistoryPage: React.FC = () => {
         mediaStreamRef.current?.getTracks().forEach(track => track.stop());
         mediaStreamRef.current = null;
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-            mediaRecorderRef.current.onstop = () => {
+            mediaRecorderRef.current.onstop = async () => {
                 const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
-                const url = URL.createObjectURL(blob);
-                setRecordedAudioUrl(url);
-                if (selectedAgent && callStartTime) {
+                let finalRecordingUrl = URL.createObjectURL(blob);
+                const supabase = getSupabaseClient();
+    
+                if (supabase && selectedAgent && callStartTime) {
+                    const callId = `call_${Date.now()}`;
+                    const filePath = `call_recordings/${callId}.webm`;
+    
+                    try {
+                        const { error: uploadError } = await supabase.storage
+                            .from('call_recordings')
+                            .upload(filePath, blob, {
+                                contentType: 'audio/webm',
+                                upsert: false,
+                            });
+    
+                        if (uploadError) throw uploadError;
+    
+                        const { data: urlData } = supabase.storage
+                            .from('call_recordings')
+                            .getPublicUrl(filePath);
+    
+                        if (urlData.publicUrl) {
+                            finalRecordingUrl = urlData.publicUrl;
+                            addNotification('Call recording saved to cloud storage.', 'success');
+                        } else {
+                            addNotification('Recording uploaded, but failed to get public URL.', 'warn');
+                        }
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message : "Unknown storage error";
+                        addNotification(`Failed to upload recording: ${message}`, 'error');
+                        console.error('Supabase upload error:', error);
+                    }
+    
                     const endTime = Date.now();
                     const call: CallRecord = {
-                        id: `call_${Date.now()}`, agentId: selectedAgent.id, agentName: selectedAgent.name,
-                        startTime: callStartTime, endTime: endTime, duration: endTime - callStartTime,
-                        transcript: liveTranscriptRef.current, recordingUrl: url,
+                        id: callId,
+                        agentId: selectedAgent.id,
+                        agentName: selectedAgent.name,
+                        startTime: callStartTime,
+                        endTime: endTime,
+                        duration: endTime - callStartTime,
+                        transcript: liveTranscriptRef.current,
+                        recordingUrl: finalRecordingUrl,
                     };
-                    addCallToHistory(call);
+                    await addCallToHistory(call);
+                    setRecordedAudioUrl(finalRecordingUrl);
+                } else if (selectedAgent && callStartTime) {
+                    const endTime = Date.now();
+                    const call: CallRecord = {
+                        id: `call_${Date.now()}`,
+                        agentId: selectedAgent.id,
+                        agentName: selectedAgent.name,
+                        startTime: callStartTime,
+                        endTime,
+                        duration: endTime - callStartTime,
+                        transcript: liveTranscriptRef.current,
+                        recordingUrl: finalRecordingUrl,
+                    };
+                    await addCallToHistory(call);
+                    setRecordedAudioUrl(finalRecordingUrl);
                 }
+    
                 recordedChunksRef.current = [];
             };
             mediaRecorderRef.current.stop();
         }
-    }, [addCallToHistory, callStartTime, selectedAgent]);
+    }, [addCallToHistory, callStartTime, selectedAgent, addNotification]);
     
     // ... all other simulation functions from Calls.tsx (playTones, connectToAgent, etc.) are pasted here ...
     // Note: for brevity, only showing the newly added control flow functions. The rest of the simulation logic is identical to the former pages/Calls.tsx.
