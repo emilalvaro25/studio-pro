@@ -17,7 +17,10 @@ export const Header: React.FC = () => {
     return (
         <header className="flex items-center justify-between h-14 px-4 bg-eburon-card border-b border-eburon-border flex-shrink-0">
             <div className="flex items-center space-x-3">
-                <img src="https://eburon.ai/logo-dark.png" alt="Eburon Logo" className="w-6 h-6" />
+                {/* Replaced broken image link with a generated logo placeholder */}
+                <div className="flex items-center justify-center w-7 h-7 bg-brand-teal rounded-md" aria-label="Eburon Logo">
+                    <span className="text-eburon-bg font-bold text-lg leading-none">E</span>
+                </div>
                 <span className="font-semibold text-lg text-eburon-text">Eburon</span>
             </div>
             <div className="flex items-center space-x-2">
