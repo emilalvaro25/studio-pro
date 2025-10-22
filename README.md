@@ -60,10 +60,13 @@ To run this project locally, you'll need a Supabase account and project.
     *   Fine-tune the bucket's access policies as needed for your production environment. The application code handles creating the necessary sub-folders (`call_recordings`, `knowledge_files`).
 
 4.  **Configure Environment Variables:**
-    *   You will need two keys from your Supabase project: the **Project URL** and the **`anon` public key**.
-    *   Go to **Project Settings** > **API**.
-    *   You will find your Project URL and the `anon` key there.
-    *   This project expects these keys to be available as environment variables named `SUPABASE_URL` and `SUPABASE_KEY`. Set these up in your development environment.
+    *   You will need two pieces of information from your Supabase project: the **Project URL** and the **`anon` public key**.
+    *   In your Supabase dashboard, go to **Project Settings** > **API**.
+    *   Find your Project URL and the `anon` public key.
+    *   You must set these as environment variables for the application to use:
+        *   `SUPABASE_URL`: Set this to your **Project URL**.
+        *   `SUPABASE_KEY`: Set this to your **`anon` public key**.
+    *   **Important**: The application code refers to the `anon` key as `SUPABASE_KEY`. Do not use your `service_role` key here, as this is a client-side application. The `anon` key is safe to expose in a browser.
 
 5.  **Run the Application:**
     *   Once the environment variables are set, you can run the application. Follow the instructions provided by your local development server.

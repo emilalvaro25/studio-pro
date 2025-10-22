@@ -4,7 +4,7 @@ import { useAppContext } from '../App';
 import Tooltip from '../components/Tooltip';
 
 const schemaContent = `-- Eburon CSR Studio Supabase Schema
--- Version 1.1 - Added User Ownership and RLS
+-- Version 1.2 - Added automated timestamp triggers
 
 -- This script provides all the necessary SQL commands to set up the database schema
 -- for the Eburon CSR Studio application on a Supabase (PostgreSQL) instance.
@@ -135,6 +135,31 @@ CREATE POLICY "Users can link their own agents and KBs" ON agent_knowledge_links
 --
 --  c. Ensure the bucket policies are set for public read access if you want recordings
 --     and documents to be easily accessible via their URLs.
+
+-- 8. Create a trigger function to automatically update the 'updated_at' column.
+--    This ensures the timestamp is current whenever a row is modified.
+CREATE OR REPLACE FUNCTION handle_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 9. Apply the trigger to tables that have an 'updated_at' column.
+--    This keeps the modification time accurate without needing to set it in the application code.
+
+-- Trigger for the 'agents' table
+CREATE TRIGGER on_agents_update
+BEFORE UPDATE ON agents
+FOR EACH ROW
+EXECUTE PROCEDURE handle_updated_at();
+
+-- Trigger for the 'knowledge_bases' table
+CREATE TRIGGER on_knowledge_bases_update
+BEFORE UPDATE ON knowledge_bases
+FOR EACH ROW
+EXECUTE PROCEDURE handle_updated_at();
 
 -- End of schema.`;
 
