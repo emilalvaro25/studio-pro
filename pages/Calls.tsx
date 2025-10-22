@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Phone, PhoneOff, Mic, MicOff, Volume2, User, Bot, Delete, Circle, Pause, Play as PlayIcon } from 'lucide-react';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob as GenAIBlob } from '@google/genai';
@@ -6,9 +5,6 @@ import { decode, encode, decodeAudioData } from '../services/audioUtils';
 import { TranscriptLine, CallRecord } from '../types';
 import { useAppContext } from '../App';
 import { getDepartmentalPrompt, Department } from '../App';
-
-// --- Web Audio Synthesizer for UI Sounds ---
-// Uses Web Audio API to generate sounds directly, avoiding file loading issues.
 
 // DTMF Frequencies (ITU-T Rec. Q.23)
 const DTMF: Record<string, [number, number]> = {
@@ -18,23 +14,27 @@ const DTMF: Record<string, [number, number]> = {
     '*': [941, 1209], '0': [941, 1336], '#': [941, 1477],
 };
 
-// Hold music is complex and remains a file-based source.
 const SOUND_SOURCES = {
     HOLD_MUSIC: [
         { src: 'https://cdn.pixabay.com/audio/2022/05/27/audio_1811b37ac8.mp3', type: 'audio/mpeg' },
     ],
+    RING_TONE: [
+        { src: 'https://cdn.pixabay.com/audio/2022/04/18/audio_517905d21a.mp3', type: 'audio/mpeg' }
+    ],
+    FAIL_TONE: [
+        { src: 'https://cdn.pixabay.com/audio/2022/08/03/audio_533130d7b7.mp3', type: 'audio/mpeg' }
+    ],
 };
 
-
 const DialerButton: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void, 'data-id'?: string; disabled?: boolean }> = ({ children, className, onClick, 'data-id': dataId, disabled }) => (
-    <button onClick={onClick} data-id={dataId} disabled={disabled} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${className} disabled:opacity-50 disabled:cursor-not-allowed`}>
+    <button onClick={onClick} data-id={dataId} disabled={disabled} className={`w-16 h-16 rounded-full flex items-center justify-center transition-all ${className} disabled:opacity-50 disabled:cursor-not-allowed`}>
         {children}
     </button>
 );
 
 const DialpadKey: React.FC<{ digit: string; subtext?: string; onClick: (digit: string) => void }> = ({ digit, subtext, onClick }) => (
-    <button onClick={() => onClick(digit)} className="rounded-full w-20 h-20 flex flex-col items-center justify-center bg-eburon-bg hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-teal">
-        <span className="text-3xl font-light">{digit}</span>
+    <button onClick={() => onClick(digit)} className="rounded-full w-16 h-16 flex flex-col items-center justify-center bg-eburon-bg hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-teal">
+        <span className="text-2xl font-light">{digit}</span>
         {subtext && <span className="text-xs text-eburon-muted -mt-1">{subtext}</span>}
     </button>
 );
@@ -141,6 +141,8 @@ const CallsPage: React.FC = () => {
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordedChunksRef = useRef<Blob[]>([]);
     const holdMusicRef = useRef<HTMLAudioElement | null>(null);
+    const ringToneRef = useRef<HTMLAudioElement | null>(null);
+    const failToneRef = useRef<HTMLAudioElement | null>(null);
     const ivrTimeoutRef = useRef<number | null>(null);
     const callStatusRef = useRef(callStatus);
 
@@ -150,11 +152,8 @@ const CallsPage: React.FC = () => {
     const outputAnalyserRef = useRef<AnalyserNode | null>(null);
     const animationFrameRef = useRef<number | null>(null);
 
-    // --- Web Audio Synthesizer for UI Sounds ---
     const uiAudioContextRef = useRef<AudioContext | null>(null);
     const uiMasterGainRef = useRef<GainNode | null>(null);
-    const ringingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const failToneIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const bgNodesRef = useRef<{ src: AudioBufferSourceNode; modOsc: OscillatorNode; } | null>(null);
 
     const ensureUiAudioContext = useCallback(() => {
@@ -197,32 +196,34 @@ const CallsPage: React.FC = () => {
         });
     }, [ensureUiAudioContext]);
     
-    const playRingTone = useCallback(() => playTones([440, 480], { duration: 2000, gain: 0.5 }), [playTones]);
     const playDtmfTone = useCallback((key: string) => { if (DTMF[key]) playTones(DTMF[key], { duration: 180, gain: 0.3 }) }, [playTones]);
     
     const stopRinging = useCallback(() => {
-        if (ringingIntervalRef.current) clearInterval(ringingIntervalRef.current);
-        ringingIntervalRef.current = null;
+        const ringTone = ringToneRef.current;
+        if (ringTone && !ringTone.paused) {
+            ringTone.pause();
+            ringTone.currentTime = 0;
+        }
     }, []);
 
     const startRinging = useCallback(() => {
         stopRinging();
-        playRingTone();
-        ringingIntervalRef.current = setInterval(playRingTone, 6000);
-    }, [playRingTone, stopRinging]);
-    
-    const stopFailTone = useCallback(() => {
-        if(failToneIntervalRef.current) clearInterval(failToneIntervalRef.current);
-        failToneIntervalRef.current = null;
-    }, []);
+        ringToneRef.current?.play().catch(e => console.error("Ringtone failed to play:", e));
+    }, [stopRinging]);
 
+    const stopFailTone = useCallback(() => {
+        const failTone = failToneRef.current;
+        if (failTone && !failTone.paused) {
+            failTone.pause();
+            failTone.currentTime = 0;
+        }
+    }, []);
+    
     const playFailTone = useCallback(() => {
         stopFailTone();
-        const playBeep = () => playTones([480, 620], { duration: 400, gain: 0.4 });
-        playBeep();
-        failToneIntervalRef.current = setInterval(playBeep, 800);
-        setTimeout(() => stopFailTone(), 4000);
-    }, [playTones, stopFailTone]);
+        failToneRef.current?.play().catch(e => console.error("Fail tone failed to play:", e));
+    }, [stopFailTone]);
+
 
     const startBgAmbience = useCallback(() => {
         const ctx = ensureUiAudioContext();
@@ -322,7 +323,7 @@ const CallsPage: React.FC = () => {
         ensureUiAudioContext();
         startRinging();
 
-        const ivrStartTime = 8000; // FIX: Changed from 14000 to 8000
+        const ivrStartTime = 8000;
         ivrTimeoutRef.current = setTimeout(() => {
             if (callStatusRef.current === 'connecting') {
                 stopRinging();
@@ -405,9 +406,7 @@ const CallsPage: React.FC = () => {
                             const sourceNode = outputCtx.createBufferSource();
                             sourceNode.buffer = audioBuffer;
 
-                            // Connect to destination to make audio audible.
                             sourceNode.connect(outputCtx.destination);
-                            // Also connect to the analyser for visualization, mirroring the input stream logic.
                             if (outputAnalyserRef.current) {
                                 sourceNode.connect(outputAnalyserRef.current);
                             }
@@ -470,7 +469,7 @@ const CallsPage: React.FC = () => {
             if (base64Audio) {
                 if (!ivrAudioContextRef.current) ivrAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
                 const audioCtx = ivrAudioContextRef.current;
-                if (audioCtx.state === 'closed') return; // Prevent errors on closed context
+                if (audioCtx.state === 'closed') return;
                 const audioBuffer = await decodeAudioData(decode(base64Audio), audioCtx, 24000, 1);
                 const source = audioCtx.createBufferSource();
                 source.buffer = audioBuffer;
@@ -484,7 +483,6 @@ const CallsPage: React.FC = () => {
         }
     }, [selectedAgent]);
     
-    // FIX: Refactored IVR state execution into a reusable function for robustness.
     const executeIvrState = useCallback((state: IvrState) => {
         if (callStatusRef.current !== 'connecting') return;
     
@@ -501,7 +499,6 @@ const CallsPage: React.FC = () => {
         }
     }, [selectedAgent, playIvrPrompt, endCall]);
 
-    // FIX: Refactored to be more robust and handle invalid input correctly.
     const handleIvrKeyPress = (key: string) => {
         if (ivrState !== 'language_select' && ivrState !== 'main_menu') return;
         
@@ -523,12 +520,11 @@ const CallsPage: React.FC = () => {
             }
         } else {
             playIvrPrompt("I'm sorry, that's not a valid option. Please try again.", () => {
-                executeIvrState(ivrState); // Re-run the current state prompt
+                executeIvrState(ivrState);
             });
         }
     };
     
-    // FIX: Replaced original effect with a cleaner one using the new executeIvrState function.
     useEffect(() => {
         if (callStatus === 'connecting' && (ivrState === 'language_select' || ivrState === 'main_menu')) {
             executeIvrState(ivrState);
@@ -581,68 +577,86 @@ const CallsPage: React.FC = () => {
             <audio ref={holdMusicRef} loop preload="auto">
                 {SOUND_SOURCES.HOLD_MUSIC.map(s => <source key={s.src} src={s.src} type={s.type} />)}
             </audio>
+             <audio ref={ringToneRef} loop preload="auto">
+                {SOUND_SOURCES.RING_TONE.map(s => <source key={s.src} src={s.src} type={s.type} />)}
+            </audio>
+            <audio ref={failToneRef} preload="auto">
+                {SOUND_SOURCES.FAIL_TONE.map(s => <source key={s.src} src={s.src} type={s.type} />)}
+            </audio>
 
-            <div className="w-full max-w-5xl h-[80vh] bg-eburon-card border border-eburon-border rounded-xl flex">
-                <div className="w-1/3 p-6 flex flex-col justify-between border-r border-eburon-border">
-                    <div>
-                        <h2 className="text-lg font-semibold text-eburon-text">
-                            {callStatus === 'connected' ? `Talking to ${selectedAgent?.name}` : 'Call Simulation'}
-                        </h2>
-                        <p className="text-eburon-muted text-sm">{selectedAgent?.personaShortText}</p>
-                    </div>
-                    
-                    <div className="flex flex-col items-center space-y-4">
-                        <div className="text-center h-10">
-                             <p className="text-3xl font-light tracking-widest">{dialedNumber || 'Dial Pad'}</p>
-                             {callStatus === 'connecting' && <p className="text-sm text-warn animate-pulse">{ivrState}...</p>}
-                             {callStatus === 'connected' && <p className="text-sm text-ok">Connected</p>}
-                             {callStatus === 'ended' && <p className="text-sm text-danger">Call Ended</p>}
+            <div className="w-full max-w-6xl h-[85vh] grid grid-cols-2 gap-8">
+                {/* Left Column: iPhone Mockup */}
+                <div className="flex items-center justify-center">
+                    <div className="relative h-[700px] w-[340px] bg-black rounded-[2.5rem] border-[10px] border-black overflow-hidden shadow-2xl">
+                        <div className="absolute top-0 left-1/2 -translate-x-1/2 h-7 w-36 bg-black rounded-b-xl z-10"></div>
+                        <div className="h-full w-full bg-eburon-card rounded-[2rem] flex flex-col p-4">
+                            {/* Content inside the phone screen */}
+                            <div className="flex-1 flex flex-col justify-between">
+                                <div className="text-center pt-4">
+                                    <h2 className="text-lg font-semibold text-eburon-text">
+                                        {callStatus === 'connected' ? `${selectedAgent?.name}` : 'Call Simulation'}
+                                    </h2>
+                                    <p className="text-eburon-muted text-xs h-4">
+                                        {selectedAgent?.personaShortText}
+                                    </p>
+                                </div>
+                                
+                                <div className="flex flex-col items-center space-y-4">
+                                    <div className="text-center h-10">
+                                         <p className="text-3xl font-light tracking-widest">{dialedNumber || 'Dial Pad'}</p>
+                                         {callStatus === 'connecting' && <p className="text-xs text-warn animate-pulse">{ivrState}...</p>}
+                                         {callStatus === 'connected' && <p className="text-xs text-ok">Connected</p>}
+                                         {callStatus === 'ended' && <p className="text-xs text-danger">Call Ended</p>}
+                                    </div>
+
+                                     <div className="grid grid-cols-3 gap-3">
+                                         {dialpadKeys.map(key => <DialpadKey key={key.d} digit={key.d} subtext={key.s} onClick={handleIvrKeyPress} />)}
+                                     </div>
+
+                                     <div className="flex items-center space-x-3 pt-2">
+                                         {callStatus === 'connected' ? (
+                                            <>
+                                                <DialerButton className={isMuted ? "bg-white/10" : "bg-eburon-bg"} onClick={() => setIsMuted(!isMuted)}>
+                                                    {isMuted ? <MicOff size={24}/> : <Mic size={24}/>}
+                                                </DialerButton>
+                                                <DialerButton className="bg-danger/80 hover:bg-danger text-white" onClick={endCall} data-id="btn-end-call">
+                                                    <PhoneOff size={24} />
+                                                </DialerButton>
+                                                <DialerButton className={isHolding ? "bg-brand-gold text-eburon-bg" : "bg-eburon-bg"} onClick={toggleHold}>
+                                                    {isHolding ? <PlayIcon size={24}/> : <Pause size={24}/>}
+                                                </DialerButton>
+                                            </>
+                                         ) : (
+                                            <>
+                                                <div className="w-16 h-16" /> {/* Placeholder */}
+                                                <DialerButton className="bg-ok/80 hover:bg-ok text-white" onClick={startCall} disabled={callStatus !== 'idle' && callStatus !== 'ended'} data-id="btn-start-call">
+                                                    <Phone size={24} />
+                                                </DialerButton>
+                                                <div className="w-16 h-16" /> {/* Placeholder */}
+                                            </>
+                                         )}
+                                     </div>
+                                </div>
+                                
+                                 <div className="flex items-center justify-between">
+                                     <div className="flex items-center space-x-1 text-eburon-muted text-xs">
+                                         {isRecording ? <><Circle size={10} className="text-danger fill-current animate-pulse"/><span>REC</span></> : <span></span>}
+                                     </div>
+                                     <div className="flex items-center space-x-1 cursor-pointer" onClick={() => setIsBgSoundActive(!isBgSoundActive)}>
+                                         <Volume2 size={14} className={isBgSoundActive ? 'text-brand-teal' : 'text-eburon-muted'}/>
+                                         <div className="w-8 h-4 bg-eburon-bg rounded-full p-0.5 flex items-center">
+                                            <div className={`w-3 h-3 rounded-full bg-eburon-muted transition-transform ${isBgSoundActive ? 'translate-x-4 bg-brand-teal' : ''}`}/>
+                                         </div>
+                                     </div>
+                                </div>
+                            </div>
                         </div>
-
-                         <div className="grid grid-cols-3 gap-4">
-                             {dialpadKeys.map(key => <DialpadKey key={key.d} digit={key.d} subtext={key.s} onClick={handleIvrKeyPress} />)}
-                         </div>
-
-                         <div className="flex items-center space-x-4 pt-4">
-                             {callStatus === 'connected' ? (
-                                <>
-                                    <DialerButton className={isMuted ? "bg-white/10" : "bg-eburon-bg"} onClick={() => setIsMuted(!isMuted)}>
-                                        {isMuted ? <MicOff size={32}/> : <Mic size={32}/>}
-                                    </DialerButton>
-                                    <DialerButton className="bg-danger/80 hover:bg-danger text-white" onClick={endCall} data-id="btn-end-call">
-                                        <PhoneOff size={32} />
-                                    </DialerButton>
-                                    <DialerButton className={isHolding ? "bg-brand-gold text-eburon-bg" : "bg-eburon-bg"} onClick={toggleHold}>
-                                        {isHolding ? <PlayIcon size={32}/> : <Pause size={32}/>}
-                                    </DialerButton>
-                                </>
-                             ) : (
-                                <>
-                                    <div className="w-20 h-20" /> {/* Placeholder */}
-                                    <DialerButton className="bg-ok/80 hover:bg-ok text-white" onClick={startCall} disabled={callStatus !== 'idle' && callStatus !== 'ended'} data-id="btn-start-call">
-                                        <Phone size={32} />
-                                    </DialerButton>
-                                    <div className="w-20 h-20" /> {/* Placeholder */}
-                                </>
-                             )}
-                         </div>
-                    </div>
-                    
-                     <div className="flex items-center justify-between">
-                         <div className="flex items-center space-x-2 text-eburon-muted text-sm">
-                             {isRecording ? <><Circle size={12} className="text-danger fill-current animate-pulse"/><span>REC</span></> : <span>Not Recording</span>}
-                         </div>
-                         <div className="flex items-center space-x-2 cursor-pointer" onClick={() => setIsBgSoundActive(!isBgSoundActive)}>
-                             <Volume2 size={16} className={isBgSoundActive ? 'text-brand-teal' : 'text-eburon-muted'}/>
-                             <div className="w-10 h-5 bg-eburon-bg rounded-full p-1 flex items-center">
-                                <div className={`w-3.5 h-3.5 rounded-full bg-eburon-muted transition-transform ${isBgSoundActive ? 'translate-x-5 bg-brand-teal' : ''}`}/>
-                             </div>
-                         </div>
                     </div>
                 </div>
 
-                <div className="w-2/3 p-6 flex flex-col">
-                    <div className="flex-1 min-h-0 flex flex-col space-y-2">
+                {/* Right Column: Transcription and Visualizers */}
+                <div className="bg-eburon-card border border-eburon-border rounded-xl flex flex-col p-6">
+                    <div className="flex-1 min-h-0 flex flex-col space-y-4">
                         <div className="grid grid-cols-2 gap-4 h-16">
                             <div className="flex flex-col items-center">
                                 <canvas ref={inputVisualizerRef} className="w-full h-full" />
