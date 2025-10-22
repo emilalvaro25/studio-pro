@@ -1,4 +1,3 @@
-
 import React, { useState, createContext, useContext, useEffect, useCallback, useMemo } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Header } from './components/Header';
@@ -7,13 +6,12 @@ import { RightPanel } from './components/RightPanel';
 import AgentVersionsModal from './components/AgentVersionsModal';
 import HomePage from './pages/Home';
 import AgentsListPage from './pages/AgentsList';
-import CallsPage from './pages/Calls';
 import KnowledgePage from './pages/Knowledge';
 import VoicesPage from './pages/Voices';
 import DeployPage from './pages/Deploy';
 import AgentBuilderPage from './pages/ImageGenerator'; // Repurposed for Agent Builder
 import SettingsPage from './pages/Settings';
-import CallHistoryPage from './pages/CallHistory'; // New Page
+import CallHistoryPage from './pages/CallHistory'; // Now serves as the main Calls page
 import DatabasePage from './pages/Database'; // New Page
 import { Agent, View, AgentVersion, CallRecord, Notification, NotificationType } from './types';
 import { X, CheckCircle, XCircle, Info, AlertTriangle, Loader2 } from 'lucide-react';
@@ -731,13 +729,12 @@ const App: React.FC = () => {
         switch (view) {
             case 'Home': return <HomePage />;
             case 'Agents': return <AgentsListPage />;
-            case 'Calls': return <CallsPage />;
+            case 'Calls': return <CallHistoryPage />;
             case 'Knowledge': return <KnowledgePage />;
             case 'Voices': return <VoicesPage />;
             case 'Deploy': return <DeployPage />;
             case 'AgentBuilder': return <AgentBuilderPage />;
             case 'Settings': return <SettingsPage />;
-            case 'CallHistory': return <CallHistoryPage />;
             case 'Database': return <DatabasePage />;
             default: return <HomePage />;
         }

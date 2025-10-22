@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Bot, Phone, Library, Voicemail, Send, Settings, History, Database } from 'lucide-react';
+import { Home, Bot, Phone, Library, Voicemail, Send, Settings, Database } from 'lucide-react';
 import { useAppContext } from '../App';
 import { View } from '../types';
 
@@ -27,7 +27,7 @@ const NavItem: React.FC<NavItemProps> = ({ icon, label, viewName, count, hasActi
     >
       {icon}
       <span className="ml-3 flex-1">{label}</span>
-      {count && (
+      {count !== undefined && (
         <span className="text-xs bg-eburon-border px-1.5 py-0.5 rounded-full">{count}</span>
       )}
       {hasActivity && !count && (
@@ -43,8 +43,7 @@ export const LeftNav: React.FC = () => {
         <nav className="w-72 bg-eburon-card border-r border-eburon-border p-4 flex flex-col space-y-2">
             <NavItem icon={<Home size={20} />} label="Home" viewName="Home" />
             <NavItem icon={<Bot size={20} />} label="Agents" viewName="Agents" count={agents.length} />
-            <NavItem icon={<Phone size={20} />} label="Calls" viewName="Calls" hasActivity />
-            <NavItem icon={<History size={20} />} label="Call History" viewName="CallHistory" count={callHistory.length} />
+            <NavItem icon={<Phone size={20} />} label="Calls" viewName="Calls" count={callHistory.length} />
             <NavItem icon={<Library size={20} />} label="Knowledge" viewName="Knowledge" count={3} />
             <NavItem icon={<Voicemail size={20} />} label="Voices" viewName="Voices" />
             <NavItem icon={<Send size={20} />} label="Deploy" viewName="Deploy" />
