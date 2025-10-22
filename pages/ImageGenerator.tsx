@@ -86,7 +86,7 @@ const CodeSnippet: React.FC<{ title: string; content: string; language: string; 
 
 
 const AgentBuilderPage: React.FC = () => {
-    const { selectedAgent, setView, agents, setAgents, handleStartTest, setVersioningAgent, addNotification } = useAppContext();
+    const { selectedAgent, setView, updateAgent, handleStartTest, setVersioningAgent, addNotification } = useAppContext();
     const [activeTab, setActiveTab] = useState<BuilderTab>('Identity');
     
     const [formData, setFormData] = useState<Agent | null>(null);
@@ -155,11 +155,12 @@ const AgentBuilderPage: React.FC = () => {
         });
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!formData) return;
-        const updatedAgents = agents.map(agent => agent.id === formData.id ? { ...formData, updatedAt: 'Just now' } : agent);
-        setAgents(updatedAgents);
-        addNotification(`${formData.name} saved successfully!`, 'success');
+        const success = await updateAgent({ ...formData, updatedAt: 'Just now' });
+        if(success) {
+            addNotification(`${formData.name} saved successfully!`, 'success');
+        }
     };
 
     const handleSavePrompt = (newPrompt: string) => {

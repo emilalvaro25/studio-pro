@@ -1,4 +1,6 @@
-import React, { useState, createContext, useContext, useEffect, useCallback } from 'react';
+
+import React, { useState, createContext, useContext, useEffect, useCallback, useMemo } from 'react';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Header } from './components/Header';
 import { LeftNav } from './components/LeftNav';
 import { RightPanel } from './components/RightPanel';
@@ -14,7 +16,62 @@ import SettingsPage from './pages/Settings';
 import CallHistoryPage from './pages/CallHistory'; // New Page
 import DatabasePage from './pages/Database'; // New Page
 import { Agent, View, AgentVersion, CallRecord, Notification, NotificationType } from './types';
-import { X, CheckCircle, XCircle, Info, AlertTriangle } from 'lucide-react';
+import { X, CheckCircle, XCircle, Info, AlertTriangle, Loader2 } from 'lucide-react';
+
+// --- Supabase Client Helper ---
+const getSupabaseClient = (): SupabaseClient | null => {
+    const url = localStorage.getItem('supabaseUrl');
+    const key = localStorage.getItem('supabaseAnonKey');
+    if (url && key) {
+        return createClient(url, key);
+    }
+    return null;
+};
+
+// --- Data Mapping Helpers ---
+const dbToAgent = (dbData: any): Omit<Agent, 'history'> => ({
+    id: dbData.id,
+    name: dbData.name,
+    status: dbData.status,
+    language: dbData.language,
+    voice: dbData.voice,
+    voiceDescription: dbData.voice_description,
+    updatedAt: new Date(dbData.updated_at).toLocaleString(),
+    personaShortText: dbData.persona_short_text,
+    persona: dbData.persona,
+    tools: dbData.tools || [],
+    introSpiel: dbData.intro_spiel || { type: 'Concise' },
+});
+
+// FIX: Update agentToDb to handle objects without `history` or `id`,
+// and to not return `id` in its result, making it suitable for both insert and update operations.
+const agentToDb = (agent: Omit<Agent, 'history' | 'id'> & { id?: string }) => ({
+    name: agent.name,
+    status: agent.status,
+    language: agent.language,
+    voice: agent.voice,
+    voice_description: agent.voiceDescription,
+    persona_short_text: agent.personaShortText,
+    persona: agent.persona,
+    tools: agent.tools,
+    intro_spiel: agent.introSpiel,
+});
+
+const dbToVersion = (dbData: any): AgentVersion => ({
+    id: dbData.id,
+    versionNumber: dbData.version_number,
+    createdAt: new Date(dbData.created_at).toLocaleString(),
+    description: dbData.description,
+    name: dbData.name,
+    status: dbData.status,
+    language: dbData.language,
+    voice: dbData.voice,
+    voiceDescription: dbData.voice_description,
+    personaShortText: dbData.persona_short_text,
+    persona: dbData.persona,
+    tools: dbData.tools || [],
+    introSpiel: dbData.intro_spiel || { type: 'Concise' },
+});
 
 // --- Notification Component ---
 const ICONS: { [key in NotificationType]: React.ReactNode } = {
@@ -75,13 +132,16 @@ interface AppContextType {
   handleStartTest: (agent: Agent) => void;
   versioningAgent: { agent: Agent; builderState?: Agent; } | null;
   setVersioningAgent: (data: { agent: Agent; builderState?: Agent; } | null) => void;
-  saveAgentVersion: (agentId: string, description: string, stateToSave: Agent) => void;
-  restoreAgentVersion: (agentId: string, versionId: string) => void;
+  saveAgentVersion: (agentId: string, description: string, stateToSave: Agent) => Promise<void>;
+  restoreAgentVersion: (agentId: string, versionId: string) => Promise<void>;
   callHistory: CallRecord[];
-  addCallToHistory: (call: CallRecord) => void;
+  addCallToHistory: (call: CallRecord) => Promise<void>;
   notifications: Notification[];
   addNotification: (message: string, type?: NotificationType) => void;
   removeNotification: (id: number) => void;
+  updateAgent: (agent: Agent) => Promise<boolean>;
+  deleteAgent: (agentId: string) => Promise<void>;
+  cloneAgent: (agent: Agent) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -330,23 +390,7 @@ const initialAgents: Agent[] = [
         persona: initialPersona,
         tools: ['Knowledge', 'Calendar'],
         introSpiel: { type: 'Warm' },
-        history: [
-            {
-                id: 'v1',
-                versionNumber: 1,
-                createdAt: '2 days ago',
-                description: 'Initial version',
-                name: initialAgentName,
-                status: 'Live',
-                language: 'Multilingual',
-                voice: 'Amber',
-                voiceDescription: initialVoiceDescription,
-                personaShortText: 'A friendly and helpful airline assistant for premium customers.',
-                persona: initialPersona,
-                tools: ['Knowledge', 'Calendar'],
-                introSpiel: { type: 'Warm' },
-            }
-        ],
+        history: [],
     },
      {
         id: '2',
@@ -366,14 +410,15 @@ const initialAgents: Agent[] = [
 
 const App: React.FC = () => {
     const [view, setView] = useState<View>('Home');
-    const [selectedAgent, setSelectedAgent] = useState<Agent | null>(initialAgents[0] || null);
-    const [agents, setAgents] = useState<Agent[]>(initialAgents);
+    const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+    const [agents, setAgents] = useState<Agent[]>([]);
     const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
     const [versioningAgent, setVersioningAgent] = useState<{ agent: Agent; builderState?: Agent; } | null>(null);
     const [callHistory, setCallHistory] = useState<CallRecord[]>([]);
     const [newAgentName, setNewAgentName] = useState('');
     const [notifications, setNotifications] = useState<Notification[]>([]);
-    
+    const [isLoading, setIsLoading] = useState(true);
+
     const removeNotification = useCallback((id: number) => {
         setNotifications(prev => prev.filter(n => n.id !== id));
     }, []);
@@ -385,6 +430,65 @@ const App: React.FC = () => {
             removeNotification(id);
         }, 5000); // Auto-dismiss after 5 seconds
     }, [removeNotification]);
+
+    useEffect(() => {
+        const loadData = async () => {
+            setIsLoading(true);
+            const supabase = getSupabaseClient();
+            if (!supabase) {
+                addNotification('Supabase not configured. Using mock data.', 'warn');
+                setAgents(initialAgents);
+                setIsLoading(false);
+                return;
+            }
+
+            try {
+                // Fetch agents
+                const { data: agentsFromDb, error: agentsError } = await supabase.from('agents').select('*');
+                if (agentsError) throw agentsError;
+
+                if (agentsFromDb && agentsFromDb.length > 0) {
+                    const agentsWithHistory = await Promise.all(agentsFromDb.map(async (dbAgent) => {
+                        const agent = dbToAgent(dbAgent);
+                        const { data: versionsFromDb } = await supabase.from('agent_versions').select('*').eq('agent_id', agent.id);
+                        return { ...agent, history: versionsFromDb ? versionsFromDb.map(dbToVersion) : [] };
+                    }));
+                    setAgents(agentsWithHistory);
+                } else {
+                    addNotification('No agents in DB. Seeding with initial data.', 'info');
+                    const supabase = getSupabaseClient();
+                    if (supabase) {
+                        for (const agent of initialAgents) {
+                            const { history, ...agentData } = agent;
+                            await supabase.from('agents').insert(agentToDb(agentData));
+                        }
+                    }
+                    setAgents(initialAgents);
+                }
+
+                // Fetch call history
+                 const { data: callHistoryFromDb, error: callHistoryError } = await supabase.from('call_history').select('*').order('start_time', { ascending: false }).limit(50);
+                 if (callHistoryError) throw callHistoryError;
+                 if (callHistoryFromDb) {
+                     setCallHistory(callHistoryFromDb.map((rec: any) => ({
+                         ...rec,
+                         startTime: Date.parse(rec.start_time),
+                         endTime: Date.parse(rec.end_time),
+                         duration: rec.duration_ms,
+                     })));
+                 }
+
+            } catch (error) {
+                const message = error instanceof Error ? error.message : "Unknown database error";
+                addNotification(`Failed to load data: ${message}`, 'error');
+                setAgents(initialAgents); // Fallback
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        loadData();
+    }, [addNotification]);
 
 
     useEffect(() => {
@@ -398,89 +502,199 @@ const App: React.FC = () => {
         setView('Calls');
     };
 
-    const saveAgentVersion = (agentId: string, description: string, stateToSave: Agent) => {
-        setAgents(prev => prev.map(agent => {
-            if (agent.id === agentId) {
-                const newVersionNumber = (agent.history[agent.history.length - 1]?.versionNumber || 0) + 1;
-                const newVersion: AgentVersion = {
-                    id: `v${newVersionNumber}-${Date.now()}`,
-                    versionNumber: newVersionNumber,
-                    createdAt: 'Just now',
-                    description,
-                    name: stateToSave.name,
-                    status: stateToSave.status,
-                    language: stateToSave.language,
-                    voice: stateToSave.voice,
-                    voiceDescription: stateToSave.voiceDescription,
-                    personaShortText: stateToSave.personaShortText,
-                    persona: stateToSave.persona,
-                    tools: stateToSave.tools,
-                    introSpiel: stateToSave.introSpiel,
-                };
-                return { ...agent, history: [...agent.history, newVersion] };
+    const updateAgent = useCallback(async (agentToUpdate: Agent): Promise<boolean> => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            addNotification('Supabase not configured.', 'error');
+            return false;
+        }
+        try {
+            const { history, ...agentData } = agentToUpdate;
+            const dbAgent = agentToDb(agentData);
+            const { error } = await supabase.from('agents').update(dbAgent).eq('id', agentData.id);
+            if (error) throw error;
+            
+            setAgents(prev => prev.map(a => a.id === agentToUpdate.id ? agentToUpdate : a));
+            if (selectedAgent?.id === agentToUpdate.id) {
+                setSelectedAgent(agentToUpdate);
             }
-            return agent;
-        }));
-        addNotification(`Version "${description}" saved for ${stateToSave.name}.`, 'success');
+            return true;
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            addNotification(`Failed to save agent: ${message}`, 'error');
+            return false;
+        }
+    }, [addNotification, selectedAgent?.id]);
+    
+    const deleteAgent = useCallback(async (agentId: string) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            addNotification('Supabase not configured.', 'error');
+            return;
+        }
+        try {
+            const { error } = await supabase.from('agents').delete().eq('id', agentId);
+            if (error) throw error;
+            const deletedAgentName = agents.find(a => a.id === agentId)?.name || 'Agent';
+            
+            const remainingAgents = agents.filter(a => a.id !== agentId);
+            setAgents(remainingAgents);
+
+            if (selectedAgent?.id === agentId) {
+                setSelectedAgent(remainingAgents.length > 0 ? remainingAgents[0] : null);
+            }
+            addNotification(`Agent "${deletedAgentName}" deleted.`, 'success');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            addNotification(`Failed to delete agent: ${message}`, 'error');
+        }
+    }, [addNotification, agents, selectedAgent?.id]);
+    
+    const cloneAgent = useCallback(async (agentToClone: Agent) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            addNotification('Supabase not configured.', 'error');
+            return;
+        }
+        try {
+            const { id, history, name, ...restOfAgent } = agentToClone;
+            const clonedAgentData = {
+                ...restOfAgent,
+                name: `${name} - Clone`,
+                status: 'Draft' as const,
+            };
+            
+            // FIX: Removed unnecessary `as Agent` cast, as `agentToDb` signature is now compatible.
+            const { data, error } = await supabase.from('agents').insert(agentToDb(clonedAgentData)).select();
+            if (error) throw error;
+
+            const newAgentFromDb = dbToAgent(data[0]);
+            const newAgent: Agent = { ...newAgentFromDb, history: [] };
+            
+            setAgents(prev => [newAgent, ...prev]);
+            setSelectedAgent(newAgent);
+            addNotification(`Agent "${newAgent.name}" created from clone.`, 'success');
+
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            addNotification(`Failed to clone agent: ${message}`, 'error');
+        }
+    }, [addNotification]);
+
+    const saveAgentVersion = async (agentId: string, description: string, stateToSave: Agent) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            addNotification('Supabase not configured.', 'error');
+            return;
+        }
+        try {
+            const agent = agents.find(a => a.id === agentId);
+            if (!agent) throw new Error("Agent not found");
+
+            const newVersionNumber = (agent.history[agent.history.length - 1]?.versionNumber || 0) + 1;
+            
+            const { history, ...versionData } = stateToSave;
+            const versionToDb = {
+                // FIX: This call is now valid due to the updated `agentToDb` signature.
+                ...agentToDb(versionData),
+                agent_id: agentId,
+                version_number: newVersionNumber,
+                description,
+            };
+
+            const { data, error } = await supabase.from('agent_versions').insert(versionToDb).select();
+            if (error) throw error;
+            
+            const newVersion = dbToVersion(data[0]);
+            
+            setAgents(prev => prev.map(a => a.id === agentId ? { ...a, history: [...a.history, newVersion] } : a));
+            addNotification(`Version "${description}" saved for ${stateToSave.name}.`, 'success');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            addNotification(`Failed to save version: ${message}`, 'error');
+        }
     };
     
-    const restoreAgentVersion = (agentId: string, versionId: string) => {
-        let agentName = '';
-        setAgents(prev => prev.map(agent => {
-            if (agent.id === agentId) {
-                agentName = agent.name;
-                const versionToRestore = agent.history.find(v => v.id === versionId);
-                if (versionToRestore) {
-                    return {
-                        ...agent,
-                        name: versionToRestore.name,
-                        status: versionToRestore.status,
-                        language: versionToRestore.language,
-                        voice: versionToRestore.voice,
-                        voiceDescription: versionToRestore.voiceDescription,
-                        personaShortText: versionToRestore.personaShortText,
-                        persona: versionToRestore.persona,
-                        tools: versionToRestore.tools,
-                        introSpiel: versionToRestore.introSpiel,
-                        updatedAt: 'Just now',
-                    };
-                }
+    const restoreAgentVersion = async (agentId: string, versionId: string) => {
+        try {
+            const agent = agents.find(a => a.id === agentId);
+            const version = agent?.history.find(v => v.id === versionId);
+            if (!agent || !version) throw new Error("Version not found");
+            
+            const { id, versionNumber, createdAt, description, ...versionData } = version;
+            const updatedAgent: Agent = {
+                ...agent,
+                ...versionData,
+                updatedAt: 'Just now',
+            };
+
+            const success = await updateAgent(updatedAgent);
+            if (success) {
+                addNotification(`Restored version for "${agent.name}".`, 'success');
+                setView('Agents');
+                setTimeout(() => setView('AgentBuilder'), 0);
             }
-            return agent;
-        }));
-        if(agentName) {
-            addNotification(`Restored version for "${agentName}".`, 'success');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            addNotification(`Failed to restore version: ${message}`, 'error');
         }
-        // After restoring, we might want to refresh the selected agent's view if it's the one being edited
-        setView('Agents');
-        setTimeout(() => setView('AgentBuilder'), 0);
     };
 
-    const addCallToHistory = (call: CallRecord) => {
-        setCallHistory(prev => [call, ...prev]);
+    const addCallToHistory = async (call: CallRecord) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            addNotification('Supabase not configured. Call record not saved.', 'warn');
+            return;
+        }
+        try {
+             const callToDb = {
+                agent_id: call.agentId,
+                agent_name: call.agentName,
+                start_time: new Date(call.startTime).toISOString(),
+                end_time: new Date(call.endTime).toISOString(),
+                duration_ms: call.duration,
+                transcript: call.transcript,
+                recording_url: call.recordingUrl, // Assuming this is a URL string
+            };
+            const { error } = await supabase.from('call_history').insert(callToDb);
+            if (error) throw error;
+            setCallHistory(prev => [call, ...prev]);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            addNotification(`Failed to save call record: ${message}`, 'error');
+        }
     };
 
-    const handleCreateAgent = (e: React.FormEvent) => {
+    const handleCreateAgent = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newAgentName.trim()) return;
         
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            addNotification('Supabase not configured.', 'error');
+            return;
+        }
+        
         try {
             const voiceDescription = "A standard, neutral voice.";
-            const newAgent: Agent = {
-                id: String(Date.now()),
+            const newAgentData = {
                 name: newAgentName,
-                status: 'Draft',
+                status: 'Draft' as const,
                 language: 'Multilingual',
                 voice: 'Amber',
                 voiceDescription: voiceDescription,
-                updatedAt: 'Just now',
                 personaShortText: `An AI assistant named ${newAgentName}.`,
                 persona: getDepartmentalPrompt('General', newAgentName, "the company", voiceDescription),
                 tools: [],
-                history: [],
-                introSpiel: { type: 'Concise' },
+                introSpiel: { type: 'Concise' as const },
             };
     
+            // FIX: Removed unnecessary `as Agent` cast, as `agentToDb` signature is now compatible.
+            const { data, error } = await supabase.from('agents').insert(agentToDb(newAgentData)).select();
+            if (error) throw error;
+
+            const newAgent: Agent = { ...dbToAgent(data[0]), history: [] };
+            
             setAgents(prev => [newAgent, ...prev]);
             setSelectedAgent(newAgent);
             setNewAgentName('');
@@ -488,12 +702,12 @@ const App: React.FC = () => {
             setView('AgentBuilder');
             addNotification(`Agent "${newAgent.name}" created successfully.`, 'success');
         } catch (error) {
-            console.error("Failed to create agent:", error);
-            addNotification("Failed to create agent. See console for details.", 'error');
+            const message = error instanceof Error ? error.message : "Unknown error";
+            addNotification(`Failed to create agent: ${message}`, 'error');
         }
     };
 
-    const contextValue: AppContextType = {
+    const contextValue: AppContextType = useMemo(() => ({
         view, setView,
         selectedAgent, setSelectedAgent,
         agents, setAgents,
@@ -503,7 +717,8 @@ const App: React.FC = () => {
         saveAgentVersion, restoreAgentVersion,
         callHistory, addCallToHistory,
         notifications, addNotification, removeNotification,
-    };
+        updateAgent, deleteAgent, cloneAgent,
+    }), [view, selectedAgent, agents, isQuickCreateOpen, versioningAgent, callHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent, cloneAgent]);
 
     const renderView = () => {
         switch (view) {
@@ -520,6 +735,15 @@ const App: React.FC = () => {
             default: return <HomePage />;
         }
     };
+    
+    if (isLoading) {
+        return (
+            <div className="bg-eburon-bg h-screen w-screen flex flex-col items-center justify-center text-eburon-muted">
+                <Loader2 size={48} className="animate-spin text-brand-teal" />
+                <p className="mt-4 text-lg">Loading Studio...</p>
+            </div>
+        );
+    }
 
     return (
         <AppContext.Provider value={contextValue}>

@@ -6,7 +6,7 @@ import type { Agent, AgentStatus } from '../types';
 type Tab = 'Actions' | 'Properties' | 'Logs';
 
 export const RightPanel: React.FC = () => {
-  const { selectedAgent, agents, setAgents, setSelectedAgent, setIsQuickCreateOpen, addNotification } = useAppContext();
+  const { selectedAgent, agents, setSelectedAgent, setIsQuickCreateOpen, addNotification, cloneAgent, updateAgent, deleteAgent } = useAppContext();
   const [activeTab, setActiveTab] = useState<Tab>('Properties');
   
   if (!selectedAgent) {
@@ -17,34 +17,25 @@ export const RightPanel: React.FC = () => {
     );
   }
   
-  const handleClone = () => {
+  const handleClone = async () => {
     if (!selectedAgent) return;
-    const clonedAgent: Agent = {
-        ...selectedAgent,
-        id: String(Date.now()),
-        name: `${selectedAgent.name} - Clone`,
-        status: 'Draft',
-        updatedAt: 'Just now',
-    };
-    setAgents(prev => [clonedAgent, ...prev]);
-    setSelectedAgent(clonedAgent);
-    addNotification(`Agent "${clonedAgent.name}" created from clone.`, 'success');
+    await cloneAgent(selectedAgent);
   };
 
-  const handleMakeLive = () => {
+  const handleMakeLive = async () => {
       if (!selectedAgent) return;
-      const updatedAgent = { ...selectedAgent, status: 'Live' as AgentStatus };
-      setAgents(prev => prev.map(a => a.id === selectedAgent.id ? updatedAgent : a));
-      setSelectedAgent(updatedAgent);
-      addNotification(`Agent "${selectedAgent.name}" is now Live.`, 'success');
+      const updatedAgent = { ...selectedAgent, status: 'Live' as AgentStatus, updatedAt: 'Just now' };
+      const success = await updateAgent(updatedAgent);
+      if (success) {
+          addNotification(`Agent "${selectedAgent.name}" is now Live.`, 'success');
+      }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
       if (!selectedAgent) return;
-      const agentName = selectedAgent.name;
-      setAgents(prev => prev.filter(a => a.id !== selectedAgent.id));
-      setSelectedAgent(agents.length > 1 ? agents.find(a => a.id !== selectedAgent.id) || null : null);
-      addNotification(`Agent "${agentName}" has been deleted.`, 'success');
+      if (window.confirm(`Are you sure you want to delete "${selectedAgent.name}"? This action cannot be undone.`)) {
+        await deleteAgent(selectedAgent.id);
+      }
   };
 
   const renderQuickActions = () => (

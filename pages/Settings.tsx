@@ -1,16 +1,31 @@
-
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAppContext } from '../App';
 
 const SettingsPage: React.FC = () => {
+    const { addNotification } = useAppContext();
+    const [supabaseUrl, setSupabaseUrl] = useState('');
+    const [supabaseAnonKey, setSupabaseAnonKey] = useState('');
 
-    const InputField: React.FC<{ label: string; placeholder: string; isSecret?: boolean; defaultValue?: string }> = ({ label, placeholder, isSecret = false, defaultValue }) => (
+    useEffect(() => {
+        const storedUrl = localStorage.getItem('supabaseUrl') || 'https://gvpapymyndpxrlsbdvhi.supabase.co';
+        const storedKey = localStorage.getItem('supabaseAnonKey') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2cGFweW15bmRweHJsc2JkdmhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjExNTk2NjMsImV4cCI6MjA3NjczNTY2M30.0mMnrD0Zbkai2ypfc3djkHSUVuT9Io4JS6vAmjM6pLA';
+        setSupabaseUrl(storedUrl);
+        setSupabaseAnonKey(storedKey);
+    }, []);
+
+    const handleSave = () => {
+        localStorage.setItem('supabaseUrl', supabaseUrl);
+        localStorage.setItem('supabaseAnonKey', supabaseAnonKey);
+        addNotification('Supabase credentials saved. Please refresh the page for changes to take effect.', 'success');
+    };
+
+    const InputField: React.FC<{ label: string; value: string; onChange: (value: string) => void; isSecret?: boolean; }> = ({ label, value, onChange, isSecret = false }) => (
         <div>
             <label className="block text-sm font-medium text-eburon-muted mb-1">{label}</label>
             <input 
                 type={isSecret ? "password" : "text"}
-                placeholder={placeholder}
-                defaultValue={defaultValue}
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
                 className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none"
             />
         </div>
@@ -23,19 +38,18 @@ const SettingsPage: React.FC = () => {
                 <div className="bg-eburon-card border border-eburon-border rounded-xl p-6">
                     <h2 className="text-lg font-semibold mb-4">API Keys</h2>
                     <div className="space-y-4">
-                        <InputField label="Gemini API Key" placeholder="Enter your Gemini API Key" isSecret />
-                        <InputField label="Telephony Provider Key" placeholder="Enter your Telephony Provider Key" isSecret />
+                        <InputField label="Gemini API Key (Handled by Environment)" value="••••••••••••••••••••••••••••" onChange={() => {}} isSecret />
                     </div>
                 </div>
                 <div className="bg-eburon-card border border-eburon-border rounded-xl p-6">
                     <h2 className="text-lg font-semibold mb-4">Supabase Credentials</h2>
                     <p className="text-sm text-eburon-muted mb-4">Provide your Supabase project details to enable database and storage features.</p>
                     <div className="space-y-4">
-                        <InputField label="Supabase Project URL" placeholder="https://your-project-ref.supabase.co" defaultValue="https://gvpapymyndpxrlsbdvhi.supabase.co" />
-                        <InputField label="Supabase Anon Key" placeholder="ey..." isSecret defaultValue="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2cGFweW15bmRweHJsc2JkdmhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjExNTk2NjMsImV4cCI6MjA3NjczNTY2M30.0mMnrD0Zbkai2ypfc3djkHSUVuT9Io4JS6vAmjM6pLA" />
+                        <InputField label="Supabase Project URL" value={supabaseUrl} onChange={setSupabaseUrl} />
+                        <InputField label="Supabase Anon Key" value={supabaseAnonKey} onChange={setSupabaseAnonKey} isSecret />
                     </div>
                     <div className="mt-6 flex justify-end">
-                        <button className="px-4 py-2 rounded-lg bg-brand-teal text-eburon-bg font-semibold hover:opacity-90">
+                        <button onClick={handleSave} className="px-4 py-2 rounded-lg bg-brand-teal text-eburon-bg font-semibold hover:opacity-90">
                             Save Credentials
                         </button>
                     </div>
