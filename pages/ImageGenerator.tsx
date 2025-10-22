@@ -92,7 +92,15 @@ const AgentBuilderPage: React.FC = () => {
         setError(null);
 
         try {
-            if (!process.env.API_KEY) throw new Error("API key is not configured.");
+            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+            if (!AudioContext) {
+                throw new Error("Your browser does not support the Web Audio API, which is required for voice previews.");
+            }
+
+            if (!process.env.API_KEY) {
+                throw new Error("Gemini API key not found. Please configure it in the settings.");
+            }
+
             const voicePrebuilt = voices.find(v => v.name === formData.voice)?.prebuilt || 'Kore';
             
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -109,7 +117,7 @@ const AgentBuilderPage: React.FC = () => {
 
             const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
             if (base64Audio) {
-                const outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+                const outputAudioContext = new AudioContext({ sampleRate: 24000 });
                 const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext, 24000, 1);
                 const source = outputAudioContext.createBufferSource();
                 source.buffer = audioBuffer;
@@ -122,11 +130,11 @@ const AgentBuilderPage: React.FC = () => {
                     outputAudioContext.close();
                 };
             } else {
-                throw new Error("No audio was generated.");
+                throw new Error("The API did not return any audio data. Please try again.");
             }
         } catch (e) {
-            console.error(e);
-            setError(e instanceof Error ? e.message : "An unknown error occurred.");
+            console.error("Voice preview error:", e);
+            setError(e instanceof Error ? e.message : "An unknown error occurred during preview.");
         } finally {
             setLoadingVoice(false);
         }
@@ -187,7 +195,7 @@ const AgentBuilderPage: React.FC = () => {
             );
             case 'Voice': return (
                  <div className="space-y-6 max-w-sm">
-                    {error && <p className="text-danger text-sm">{error}</p>}
+                    {error && <div className="text-danger text-sm bg-danger/10 border border-danger/20 p-3 rounded-lg">{error}</div>}
                     <div>
                         <label htmlFor="voice" className="block text-sm font-medium text-eburon-muted mb-2">Voice</label>
                         <select id="voice" name="voice" value={formData.voice} onChange={handleInputChange} className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none">
