@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { decode, decodeAudioData } from '../services/audioUtils';
 import { useAppContext } from '../App';
-import { Play, Loader2, Save, User, Brain, Voicemail, Library, TestTube, Phone, CheckSquare, Square, Volume2 } from 'lucide-react';
+import { Play, Loader2, Save, User, Brain, Voicemail, Library, TestTube, Phone, CheckSquare, Square, Volume2, X } from 'lucide-react';
 import { Agent, AgentTool } from '../types';
 
 const voices = [
@@ -34,12 +34,39 @@ const TabButton: React.FC<{
     </button>
 );
 
+const SystemPromptModal: React.FC<{ prompt: string; onSave: (newPrompt: string) => void; onClose: () => void; }> = ({ prompt, onSave, onClose }) => {
+    const [currentPrompt, setCurrentPrompt] = useState(prompt);
+
+    return (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm" onClick={onClose}>
+            <div className="bg-eburon-card border border-eburon-border rounded-xl p-6 w-full max-w-2xl h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-4 flex-shrink-0">
+                    <h2 className="text-lg font-semibold">Edit Full System Prompt</h2>
+                    <button onClick={onClose}><X size={20} className="text-eburon-muted hover:text-eburon-text"/></button>
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                    <textarea 
+                        value={currentPrompt}
+                        onChange={e => setCurrentPrompt(e.target.value)}
+                        className="w-full h-full bg-eburon-bg border border-eburon-border rounded-lg p-3 focus:ring-2 focus:ring-brand-teal focus:outline-none font-mono text-sm leading-relaxed"
+                    />
+                </div>
+                <div className="mt-4 flex justify-end space-x-3 flex-shrink-0">
+                    <button onClick={onClose} className="px-4 py-2 rounded-lg bg-eburon-border hover:bg-white/10">Cancel</button>
+                    <button onClick={() => onSave(currentPrompt)} className="px-4 py-2 rounded-lg bg-brand-teal text-eburon-bg font-semibold hover:opacity-90">Save Prompt</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 const AgentBuilderPage: React.FC = () => {
     const { selectedAgent, setView, agents, setAgents, handleStartTest } = useAppContext();
     const [activeTab, setActiveTab] = useState<BuilderTab>('Identity');
     
     const [formData, setFormData] = useState<Agent | null>(selectedAgent);
+    const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
     
     const [speakingRate, setSpeakingRate] = useState(1.0);
     const [bargeIn, setBargeIn] = useState(true);
@@ -87,6 +114,11 @@ const AgentBuilderPage: React.FC = () => {
         const updatedAgents = agents.map(agent => agent.id === formData.id ? { ...formData, updatedAt: 'Just now' } : agent);
         setAgents(updatedAgents);
         alert(`${formData.name} saved successfully!`);
+    };
+
+    const handleSavePrompt = (newPrompt: string) => {
+        setFormData(prev => prev ? { ...prev, persona: newPrompt } : null);
+        setIsPromptModalOpen(false);
     };
     
     const playPreview = async (voiceName: string, prebuiltVoice: string) => {
@@ -151,8 +183,11 @@ const AgentBuilderPage: React.FC = () => {
                         <input id="name" name="name" type="text" value={formData.name} onChange={handleInputChange} className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none"/>
                     </div>
                     <div>
-                        <label htmlFor="persona" className="block text-sm font-medium text-eburon-muted mb-2">Persona</label>
-                        <textarea id="persona" name="persona" rows={5} value={formData.persona} onChange={handleInputChange} className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none" placeholder="e.g., A friendly and helpful airline assistant."/>
+                        <label htmlFor="personaShortText" className="block text-sm font-medium text-eburon-muted mb-2">Persona (Short)</label>
+                        <input id="personaShortText" name="personaShortText" type="text" value={formData.personaShortText} onChange={handleInputChange} className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none" placeholder="e.g., A friendly and helpful airline assistant."/>
+                        <button onClick={() => setIsPromptModalOpen(true)} className="text-sm text-brand-teal hover:underline mt-2">
+                            Edit Full System Prompt
+                        </button>
                     </div>
                      <div>
                         <label htmlFor="language" className="block text-sm font-medium text-eburon-muted mb-2">Language</label>
@@ -320,6 +355,13 @@ const AgentBuilderPage: React.FC = () => {
                     {renderContent()}
                 </div>
             </div>
+             {isPromptModalOpen && (
+                <SystemPromptModal
+                    prompt={formData.persona}
+                    onSave={handleSavePrompt}
+                    onClose={() => setIsPromptModalOpen(false)}
+                />
+            )}
         </div>
     );
 };

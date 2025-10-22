@@ -84,6 +84,7 @@ const CallsPage: React.FC = () => {
     const [dialedNumber, setDialedNumber] = useState('');
     const [isRecording, setIsRecording] = useState(false);
     const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+    const [isBgSoundActive, setIsBgSoundActive] = useState(false);
     
     // FIX: The LiveSession type is not exported from @google/genai. Use 'any' for the session object.
     const sessionRef = useRef<any | null>(null);
@@ -96,6 +97,7 @@ const CallsPage: React.FC = () => {
     const transcriptRef = useRef(transcript);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordedChunksRef = useRef<Blob[]>([]);
+    const audioBgRef = useRef<HTMLAudioElement | null>(null);
 
     const inputVisualizerRef = useRef<HTMLCanvasElement>(null);
     const outputVisualizerRef = useRef<HTMLCanvasElement>(null);
@@ -107,6 +109,18 @@ const CallsPage: React.FC = () => {
     useEffect(() => {
         transcriptRef.current = transcript;
     }, [transcript]);
+
+    useEffect(() => {
+        const audioEl = audioBgRef.current;
+        if (audioEl) {
+            if (isBgSoundActive) {
+                audioEl.volume = 0.1; // Low volume
+                audioEl.play().catch(error => console.warn("Background audio playback failed:", error));
+            } else {
+                audioEl.pause();
+            }
+        }
+    }, [isBgSoundActive]);
 
     const addTranscriptLine = (speaker: 'You' | 'Agent' | 'System', text: string) => {
         setTranscript(prev => [...prev, { speaker, text, timestamp: Date.now() }]);
@@ -322,21 +336,36 @@ const CallsPage: React.FC = () => {
 
     return (
         <div className="p-6 flex flex-col h-full">
+            <audio ref={audioBgRef} src="https://cdn.pixabay.com/download/audio/2022/04/24/audio_32341d3a5a.mp3" loop />
             <div className="flex justify-between items-center mb-4">
                 <h1 className="text-xl font-semibold text-eburon-text">Live Call Test: <span className="text-brand-teal font-bold">{selectedAgent.name}</span></h1>
-                <div className="flex items-center">
-                    {(callStatus === 'idle' || callStatus === 'ended') ? (
-                        <label htmlFor="record-toggle" className="flex items-center space-x-2 cursor-pointer">
-                            <input
-                                id="record-toggle"
-                                type="checkbox"
-                                className="sr-only peer"
-                                checked={isRecording}
-                                onChange={() => setIsRecording(prev => !prev)}
-                            />
-                             <div className="relative w-9 h-5 bg-eburon-bg rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-danger"></div>
-                            <span className="text-sm font-medium text-eburon-muted">Record</span>
-                        </label>
+                <div className="flex items-center space-x-4">
+                     {(callStatus === 'idle' || callStatus === 'ended') ? (
+                        <>
+                            <label htmlFor="bg-sound-toggle" className="flex items-center space-x-2 cursor-pointer">
+                                <input
+                                    id="bg-sound-toggle"
+                                    type="checkbox"
+                                    className="sr-only peer"
+                                    checked={isBgSoundActive}
+                                    onChange={() => setIsBgSoundActive(prev => !prev)}
+                                />
+                                <div className="relative w-9 h-5 bg-eburon-bg rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-teal"></div>
+                                <span className="text-sm font-medium text-eburon-muted">Call BG</span>
+                            </label>
+
+                            <label htmlFor="record-toggle" className="flex items-center space-x-2 cursor-pointer">
+                                <input
+                                    id="record-toggle"
+                                    type="checkbox"
+                                    className="sr-only peer"
+                                    checked={isRecording}
+                                    onChange={() => setIsRecording(prev => !prev)}
+                                />
+                                <div className="relative w-9 h-5 bg-eburon-bg rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-danger"></div>
+                                <span className="text-sm font-medium text-eburon-muted">Record</span>
+                            </label>
+                        </>
                     ) : (
                         isRecording && (
                             <div className="flex items-center space-x-2 text-danger animate-pulse">

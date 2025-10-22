@@ -10,6 +10,7 @@ export interface Agent {
   language: string;
   voice: string;
   updatedAt: string;
+  personaShortText: string;
   persona: string;
   tools: AgentTool[];
 }
