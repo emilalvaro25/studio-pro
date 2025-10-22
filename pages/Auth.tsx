@@ -65,6 +65,27 @@ const AuthPage: React.FC<AuthPageProps> = ({ addNotification }) => {
         }
     };
 
+    const handleAnonymousSignIn = async () => {
+        setLoading(true);
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            addNotification('Supabase client not configured.', 'error');
+            setLoading(false);
+            return;
+        }
+
+        try {
+            const { error } = await supabase.auth.signInAnonymously();
+            if (error) throw error;
+            addNotification('Signed in as a guest.', 'success');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "An unknown error occurred.";
+            addNotification(message, 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const PasswordInput: React.FC<{
         value: string;
         onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -151,6 +172,22 @@ const AuthPage: React.FC<AuthPageProps> = ({ addNotification }) => {
 
                     <div className="bg-surface/80 backdrop-blur-sm border border-border rounded-xl p-8 shadow-2xl">
                         {AuthForm()}
+                        <div className="relative my-6">
+                            <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                                <div className="w-full border-t border-border" />
+                            </div>
+                            <div className="relative flex justify-center text-xs">
+                                <span className="bg-surface px-2 text-subtle">OR</span>
+                            </div>
+                        </div>
+                        <button
+                            onClick={handleAnonymousSignIn}
+                            disabled={loading}
+                            className="w-full flex items-center justify-center p-3 rounded-lg bg-panel hover:bg-border font-semibold text-text disabled:opacity-50 transition-colors"
+                        >
+                             {loading && <Loader2 size={20} className="animate-spin mr-2" />}
+                             Continue as Guest
+                        </button>
                         <div className="mt-6 text-center text-sm">
                             {authView === 'signIn' && (
                                 <>
