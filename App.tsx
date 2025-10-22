@@ -1,25 +1,28 @@
 
-import React, { useState, createContext, useContext, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, createContext, useContext, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { createClient, SupabaseClient, Session, User } from '@supabase/supabase-js';
 import { Header } from './components/Header';
 import { LeftNav } from './components/LeftNav';
 import { RightPanel } from './components/RightPanel';
-import AgentVersionsModal from './components/AgentVersionsModal';
-import HomePage from './pages/Home';
-import AgentsListPage from './pages/AgentsList';
-import KnowledgePage from './pages/Knowledge';
-import VoicesPage from './pages/Voices';
-import DeployPage from './pages/Deploy';
-import AgentBuilderPage from './pages/ImageGenerator';
-import SettingsPage from './pages/Settings';
-import CallHistoryPage from './pages/CallHistory';
-import DatabasePage from './pages/Database';
-import AuthPage from './pages/Auth';
-import ProfilePage from './pages/Profile';
-import TemplatesPage from './pages/Templates';
-import IntegrationsPage from './pages/Integrations';
 import { Agent, View, AgentVersion, CallRecord, Notification, NotificationType, Theme } from './types';
 import { X, CheckCircle, XCircle, Info, AlertTriangle, Loader2 } from 'lucide-react';
+
+// Lazy load page components for better performance
+const HomePage = lazy(() => import('./pages/Home'));
+const AgentsListPage = lazy(() => import('./pages/AgentsList'));
+const KnowledgePage = lazy(() => import('./pages/Knowledge'));
+const VoicesPage = lazy(() => import('./pages/Voices'));
+const DeployPage = lazy(() => import('./pages/Deploy'));
+const AgentBuilderPage = lazy(() => import('./pages/ImageGenerator'));
+const SettingsPage = lazy(() => import('./pages/Settings'));
+const CallHistoryPage = lazy(() => import('./pages/CallHistory'));
+const DatabasePage = lazy(() => import('./pages/Database'));
+const AuthPage = lazy(() => import('./pages/Auth'));
+const ProfilePage = lazy(() => import('./pages/Profile'));
+const TemplatesPage = lazy(() => import('./pages/Templates'));
+const IntegrationsPage = lazy(() => import('./pages/Integrations'));
+const AgentVersionsModal = lazy(() => import('./components/AgentVersionsModal'));
+
 
 // --- Supabase Client Helper ---
 const getSupabaseClient = (): SupabaseClient | null => {
@@ -401,6 +404,13 @@ export const getDepartmentalPrompt = (department: Department, agentName: string,
     }
     return `${basePrompt}\n\nPart 6: Current Task Directive\n\nYour current specialization is: ${departmentSpecifics} Please address the customer's needs accordingly.`;
 };
+
+const PageLoader: React.FC = () => (
+    <div className="flex-1 flex items-center justify-center">
+        <Loader2 size={32} className="animate-spin text-primary" />
+    </div>
+);
+
 
 const App: React.FC = () => {
     const [session, setSession] = useState<Session | null>(null);
@@ -797,7 +807,15 @@ const App: React.FC = () => {
     }
 
     if (!session) {
-        return <AuthPage addNotification={addNotification} />;
+        return (
+            <Suspense fallback={
+                <div className="bg-background h-screen w-screen flex items-center justify-center">
+                    <Loader2 size={48} className="animate-spin text-primary" />
+                </div>
+            }>
+                <AuthPage addNotification={addNotification} />
+            </Suspense>
+        );
     }
 
     return (
@@ -806,8 +824,10 @@ const App: React.FC = () => {
                 <Header />
                 <div className="flex flex-1 min-h-0 relative">
                     <LeftNav />
-                    <main className="flex-1 overflow-y-auto bg-background">
-                        {renderView()}
+                    <main className="flex-1 overflow-y-auto bg-background flex">
+                        <Suspense fallback={<PageLoader />}>
+                            {renderView()}
+                        </Suspense>
                     </main>
                     <RightPanel />
                     {(isLeftNavOpen || isRightPanelOpen) && ! (window.innerWidth > 1024) && (
@@ -821,7 +841,9 @@ const App: React.FC = () => {
                     )}
                 </div>
             </div>
-            {versioningAgent && <AgentVersionsModal data={versioningAgent} onClose={() => setVersioningAgent(null)} />}
+            <Suspense>
+                {versioningAgent && <AgentVersionsModal data={versioningAgent} onClose={() => setVersioningAgent(null)} />}
+            </Suspense>
             {isQuickCreateOpen && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm" onClick={() => setIsQuickCreateOpen(false)}>
                     <div className="bg-surface border border-border rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>

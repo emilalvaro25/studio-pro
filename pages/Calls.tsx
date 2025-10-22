@@ -251,7 +251,8 @@ const CallsPage: React.FC = () => {
 
         setCallStatus('ended');
         setIvrState('ended');
-        clearTimeout(ivrTimeoutRef.current as number);
+        // Fix: Use window.clearTimeout to ensure browser's implementation is used.
+        window.clearTimeout(ivrTimeoutRef.current as number);
         stopRinging();
         stopFailTone();
         
@@ -302,7 +303,8 @@ const CallsPage: React.FC = () => {
         startRinging();
 
         const ivrStartTime = 8000;
-        ivrTimeoutRef.current = setTimeout(() => {
+        // Fix: Use window.setTimeout to avoid NodeJS.Timeout type conflict in browser environment.
+        ivrTimeoutRef.current = window.setTimeout(() => {
             if (callStatusRef.current === 'connecting') {
                 stopRinging();
                 setIvrState('language_select');
@@ -477,7 +479,8 @@ const CallsPage: React.FC = () => {
             
             playIvrPrompt(promptText, () => {
                clearTimeout(ivrTimeoutRef.current as number);
-               ivrTimeoutRef.current = setTimeout(() => {
+               // Fix: Use window.setTimeout to avoid NodeJS.Timeout type conflict in browser environment.
+               ivrTimeoutRef.current = window.setTimeout(() => {
                    playIvrPrompt("I'm sorry, I didn't get a response. Please call back later. Goodbye.", endCall);
                }, config.timeout);
             });
