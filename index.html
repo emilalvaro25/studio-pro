@@ -1,21 +1,29 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Eburon CSR Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
+        darkMode: 'class',
         theme: {
           extend: {
+            fontFamily: {
+              sans: ['Roboto', 'Helvetica', 'sans-serif'],
+            },
             colors: {
-              'eburon-bg': '#0b0e13',
-              'eburon-card': '#11141a',
-              'eburon-border': '#1b2130',
-              'eburon-text': '#e7e8ea',
-              'eburon-muted': '#9aa0a6',
+              'background': 'hsl(var(--background))',
+              'card': 'hsl(var(--card))',
+              'text': 'hsl(var(--text))',
+              'muted': 'hsl(var(--muted))',
+              'border': 'hsl(var(--border))',
+              'primary': 'hsl(var(--primary))',
               'brand-teal': '#19c2ff',
               'brand-gold': '#f6c453',
               'ok': '#22c55e',
@@ -26,6 +34,35 @@
         }
       }
     </script>
+    <style>
+      :root {
+        /* Light Theme */
+        --background: 0 0% 98%;
+        --card: 0 0% 100%;
+        --text: 240 10% 4%;
+        --muted: 240 4% 46%;
+        --border: 240 6% 90%;
+        --primary: 196 100% 55%;
+      }
+      .dark {
+        /* Dark Theme */
+        --background: 216 19% 11%;
+        --background-gradient-start: 218 19% 6%;
+        --card: 220 17% 9%;
+        --text: 220 14% 91%;
+        --muted: 215 9% 63%;
+        --border: 216 15% 15%;
+        --primary: 196 100% 55%;
+      }
+      body {
+        background-color: hsl(var(--background));
+        color: hsl(var(--text));
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+      .dark body {
+        background: linear-gradient(180deg, hsl(var(--background-gradient-start)) 0%, hsl(var(--background)) 100%);
+      }
+    </style>
   <script type="importmap">
 {
   "imports": {
@@ -40,7 +77,7 @@
 }
 </script>
 </head>
-  <body class="bg-eburon-bg text-eburon-text">
+  <body class="bg-background text-text">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

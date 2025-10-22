@@ -5,7 +5,7 @@ import { Agent, AgentStatus } from '../types';
 
 const StatusPill: React.FC<{ status: AgentStatus }> = ({ status }) => {
   const styles = {
-    Draft: 'bg-eburon-muted/20 text-eburon-muted',
+    Draft: 'bg-muted/20 text-muted',
     Ready: 'bg-ok/20 text-ok',
     Live: 'bg-brand-teal/20 text-brand-teal',
   };
@@ -42,14 +42,14 @@ const AgentsListPage: React.FC = () => {
     return (
         <div className="p-6">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-xl font-semibold text-eburon-text">Agents</h1>
+                <h1 className="text-xl font-semibold text-text">Agents</h1>
                 <div className="flex items-center space-x-4">
                     <input 
                         type="text" 
                         placeholder="Search agents..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
-                        className="w-64 bg-eburon-card border border-eburon-border rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-brand-teal focus:outline-none"
+                        className="w-64 bg-card border border-border rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-brand-teal focus:outline-none"
                     />
                     <button onClick={() => setIsQuickCreateOpen(true)} data-id="btn-new-agent" className="flex items-center space-x-2 bg-brand-teal text-eburon-bg font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
                         <Plus size={18} />
@@ -59,9 +59,9 @@ const AgentsListPage: React.FC = () => {
             </div>
 
             {agents.length > 0 ? (
-                <div className="bg-eburon-card border border-eburon-border rounded-xl overflow-hidden">
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
                     <table className="w-full text-left">
-                        <thead className="border-b border-eburon-border text-xs text-eburon-muted uppercase">
+                        <thead className="border-b border-border text-xs text-muted uppercase">
                             <tr>
                                 <th className="p-4 font-medium">Name</th>
                                 <th className="p-4 font-medium">Status</th>
@@ -71,20 +71,20 @@ const AgentsListPage: React.FC = () => {
                                 <th className="p-4 font-medium">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-eburon-border">
+                        <tbody className="divide-y divide-border">
                             {filteredAgents.map(agent => (
-                                <tr key={agent.id} className="hover:bg-white/5 cursor-pointer" onClick={() => setSelectedAgent(agent)}>
-                                    <td className="p-4 font-semibold text-eburon-text">{agent.name}</td>
+                                <tr key={agent.id} className="hover:bg-primary/5 cursor-pointer" onClick={() => setSelectedAgent(agent)}>
+                                    <td className="p-4 font-semibold text-text">{agent.name}</td>
                                     <td className="p-4"><StatusPill status={agent.status} /></td>
-                                    <td className="p-4 text-eburon-muted">{agent.language}</td>
-                                    <td className="p-4 text-eburon-muted">{agent.voice}</td>
-                                    <td className="p-4 text-eburon-muted">{agent.updatedAt}</td>
+                                    <td className="p-4 text-muted">{agent.language}</td>
+                                    <td className="p-4 text-muted">{agent.voice}</td>
+                                    <td className="p-4 text-muted">{agent.updatedAt}</td>
                                     <td className="p-4">
-                                        <div className="flex items-center space-x-3 text-eburon-muted">
+                                        <div className="flex items-center space-x-3 text-muted">
                                             <button onClick={(e) => handleTest(e, agent)} className="hover:text-brand-teal" title="Test"><Play size={18}/></button>
                                             <button onClick={(e) => handleEdit(e, agent)} className="hover:text-brand-gold" title="Edit"><Edit size={18}/></button>
-                                            <button onClick={(e) => handleOpenVersions(e, agent)} className="hover:text-eburon-text" title="Version History"><History size={18}/></button>
-                                            <button className="hover:text-eburon-text" title="More" onClick={(e) => e.stopPropagation()}><MoreVertical size={18}/></button>
+                                            <button onClick={(e) => handleOpenVersions(e, agent)} className="hover:text-text" title="Version History"><History size={18}/></button>
+                                            <button className="hover:text-text" title="More" onClick={(e) => e.stopPropagation()}><MoreVertical size={18}/></button>
                                         </div>
                                     </td>
                                 </tr>
@@ -93,10 +93,10 @@ const AgentsListPage: React.FC = () => {
                     </table>
                 </div>
             ) : (
-                <div className="text-center py-20 bg-eburon-card border border-eburon-border rounded-xl">
-                    <Bot size={48} className="mx-auto text-eburon-muted" />
-                    <h2 className="mt-4 text-lg font-semibold text-eburon-text">No agents yet.</h2>
-                    <p className="mt-1 text-eburon-muted">Create your first agent to get started.</p>
+                <div className="text-center py-20 bg-card border border-border rounded-xl">
+                    <Bot size={48} className="mx-auto text-muted" />
+                    <h2 className="mt-4 text-lg font-semibold text-text">No agents yet.</h2>
+                    <p className="mt-1 text-muted">Create your first agent to get started.</p>
                     <button 
                         onClick={() => setIsQuickCreateOpen(true)} 
                         data-id="btn-new-agent-empty" 

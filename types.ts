@@ -1,6 +1,6 @@
 import { Blob } from 'buffer';
 
-export type View = 'Home' | 'Agents' | 'Calls' | 'Knowledge' | 'Voices' | 'Deploy' | 'Settings' | 'AgentBuilder' | 'CallHistory' | 'Database';
+export type View = 'Home' | 'Agents' | 'Calls' | 'Knowledge' | 'Voices' | 'Deploy' | 'Settings' | 'AgentBuilder' | 'CallHistory' | 'Database' | 'Profile';
 
 export type AgentStatus = 'Draft' | 'Ready' | 'Live';
 export type AgentTool = 'Knowledge' | 'Webhook' | 'Calendar' | 'Payments';
@@ -69,3 +69,5 @@ export interface CallRecord {
   transcript: TranscriptLine[];
   recordingUrl: string;
 }
+
+export type Theme = 'light' | 'dark';

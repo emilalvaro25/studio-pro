@@ -23,14 +23,14 @@ const NavItem: React.FC<NavItemProps> = ({ icon, label, viewName, count, hasActi
       title={!isNavOpen ? label : undefined}
       className={`flex items-center w-full h-10 px-3 rounded-lg text-left transition-colors ${
         isActive
-          ? 'bg-white/10 text-eburon-text'
-          : 'text-eburon-muted hover:bg-white/5 hover:text-eburon-text'
+          ? 'bg-primary/10 text-primary'
+          : 'text-muted hover:bg-primary/5 hover:text-text'
       } ${!isNavOpen && 'lg:justify-center'}`}
     >
       {icon}
       {isNavOpen && <span className="ml-3 flex-1 whitespace-nowrap">{label}</span>}
       {isNavOpen && count !== undefined && (
-        <span className="text-xs bg-eburon-border px-1.5 py-0.5 rounded-full">{count}</span>
+        <span className="text-xs bg-border px-1.5 py-0.5 rounded-full">{count}</span>
       )}
       {isNavOpen && hasActivity && !count && (
          <div className="w-1.5 h-1.5 bg-brand-teal rounded-full"></div>
@@ -42,7 +42,7 @@ const NavItem: React.FC<NavItemProps> = ({ icon, label, viewName, count, hasActi
 export const LeftNav: React.FC = () => {
     const { agents, callHistory, isLeftNavOpen, setIsLeftNavOpen } = useAppContext();
     return (
-        <nav className={`bg-eburon-card border-r border-eburon-border flex flex-col z-40
+        <nav className={`bg-card border-r border-border flex flex-col z-40
             fixed inset-y-0 left-0
             transform transition-transform lg:transition-all duration-300 ease-in-out
             ${isLeftNavOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -61,9 +61,9 @@ export const LeftNav: React.FC = () => {
             <div className="flex-grow"></div>
             <div className="space-y-2">
                 <NavItem icon={<Settings size={20} />} label="Settings" viewName="Settings" isNavOpen={isLeftNavOpen} />
-                <div className="hidden lg:block pt-2 border-t border-eburon-border">
+                <div className="hidden lg:block pt-2 border-t border-border">
                     <button onClick={() => setIsLeftNavOpen(prev => !prev)} 
-                        className={`w-full flex items-center h-10 px-3 rounded-lg text-eburon-muted hover:bg-white/5 hover:text-eburon-text ${!isLeftNavOpen && 'justify-center'}`}
+                        className={`w-full flex items-center h-10 px-3 rounded-lg text-muted hover:bg-primary/5 hover:text-text ${!isLeftNavOpen && 'justify-center'}`}
                         aria-label={isLeftNavOpen ? "Collapse navigation" : "Expand navigation"}
                     >
                         {isLeftNavOpen ? 

@@ -4,15 +4,15 @@ import { useAppContext } from '../App';
 import { Agent, AgentStatus, CallRecord } from '../types';
 
 const Card: React.FC<{ title: string; children: React.ReactNode; }> = ({ title, children }) => (
-  <div className="bg-eburon-card border border-eburon-border rounded-xl p-4">
-    <h3 className="font-semibold text-eburon-text mb-3">{title}</h3>
+  <div className="bg-card border border-border rounded-xl p-4">
+    <h3 className="font-semibold text-text mb-3">{title}</h3>
     {children}
   </div>
 );
 
 const StatusPill: React.FC<{ status: AgentStatus }> = ({ status }) => {
   const styles = {
-    Draft: 'bg-eburon-muted/20 text-eburon-muted',
+    Draft: 'bg-muted/20 text-muted',
     Ready: 'bg-ok/20 text-ok',
     Live: 'bg-brand-teal/20 text-brand-teal',
   };
@@ -28,7 +28,6 @@ const formatDuration = (ms: number) => {
 
 
 const HomePage: React.FC = () => {
-  // FIX: Add `addNotification` to the destructuring to make it available in the component.
   const { agents, callHistory, setIsQuickCreateOpen, setView, setSelectedAgent, handleStartTest, addNotification } = useAppContext();
 
   const handleEdit = (agent: Agent) => {
@@ -39,11 +38,8 @@ const HomePage: React.FC = () => {
   const handleNavigateAndEdit = (agent: Agent, tab: 'Telephony') => {
       setSelectedAgent(agent);
       setView('AgentBuilder');
-      // A slight delay might be needed if the builder component needs to mount first
       setTimeout(() => {
           // This is an indirect way to signal tab change. A more robust solution might use context.
-          // For now, we rely on the component's internal state management after navigation.
-          // The user will land on the AgentBuilder and can then click the tab.
       }, 100);
   };
 
@@ -55,16 +51,16 @@ const HomePage: React.FC = () => {
           <Plus size={20} />
           <span className="font-semibold">New Agent</span>
         </button>
-        <button onClick={() => setView('Knowledge')} className="p-4 bg-eburon-card hover:bg-white/5 border border-eburon-border rounded-xl flex items-center justify-center space-x-2 transition-all">
-          <Upload size={20} className="text-eburon-muted" />
+        <button onClick={() => setView('Knowledge')} className="p-4 bg-card hover:bg-primary/5 border border-border rounded-xl flex items-center justify-center space-x-2 transition-all">
+          <Upload size={20} className="text-muted" />
           <span className="font-semibold">Import Knowledge</span>
         </button>
-        <button onClick={() => { if(agents.length > 0) { handleNavigateAndEdit(agents[0], 'Telephony'); } else { addNotification('Create an agent first to connect a number.', 'warn'); } }} className="p-4 bg-eburon-card hover:bg-white/5 border border-eburon-border rounded-xl flex items-center justify-center space-x-2 transition-all">
-          <Phone size={20} className="text-eburon-muted" />
+        <button onClick={() => { if(agents.length > 0) { handleNavigateAndEdit(agents[0], 'Telephony'); } else { addNotification('Create an agent first to connect a number.', 'warn'); } }} className="p-4 bg-card hover:bg-primary/5 border border-border rounded-xl flex items-center justify-center space-x-2 transition-all">
+          <Phone size={20} className="text-muted" />
           <span className="font-semibold">Connect Number</span>
         </button>
-        <button onClick={() => setView('Deploy')} className="p-4 bg-eburon-card hover:bg-white/5 border border-eburon-border rounded-xl flex items-center justify-center space-x-2 transition-all">
-          <Send size={20} className="text-eburon-muted" />
+        <button onClick={() => setView('Deploy')} className="p-4 bg-card hover:bg-primary/5 border border-border rounded-xl flex items-center justify-center space-x-2 transition-all">
+          <Send size={20} className="text-muted" />
           <span className="font-semibold">Deploy Endpoint</span>
         </button>
       </div>
@@ -73,18 +69,18 @@ const HomePage: React.FC = () => {
         <Card title="Recent Agents">
           <div className="space-y-3">
             {agents.slice(0, 3).map(agent => (
-              <div key={agent.id} className="flex justify-between items-center p-2 rounded-lg hover:bg-white/5">
+              <div key={agent.id} className="flex justify-between items-center p-2 rounded-lg hover:bg-primary/5">
                 <div>
-                  <span className="text-eburon-text mr-3">{agent.name}</span>
+                  <span className="text-text mr-3">{agent.name}</span>
                   <StatusPill status={agent.status} />
                 </div>
                 <div className="flex items-center space-x-2">
-                  <button onClick={() => handleStartTest(agent)} className="text-eburon-muted hover:text-brand-teal" title="Test Agent"><Play size={16}/></button>
-                  <button onClick={() => handleEdit(agent)} className="text-eburon-muted hover:text-brand-gold" title="Edit Agent"><Edit size={16}/></button>
+                  <button onClick={() => handleStartTest(agent)} className="text-muted hover:text-brand-teal" title="Test Agent"><Play size={16}/></button>
+                  <button onClick={() => handleEdit(agent)} className="text-muted hover:text-brand-gold" title="Edit Agent"><Edit size={16}/></button>
                 </div>
               </div>
             ))}
-             {agents.length === 0 && <p className="text-sm text-center text-eburon-muted py-4">No agents created yet.</p>}
+             {agents.length === 0 && <p className="text-sm text-center text-muted py-4">No agents created yet.</p>}
           </div>
         </Card>
         <Card title="Latest Calls">
@@ -92,13 +88,13 @@ const HomePage: React.FC = () => {
                 {callHistory.slice(0, 3).map((call: CallRecord) => (
                     <div key={call.id} className="flex justify-between items-center p-2 rounded-lg">
                         <div className="truncate">
-                            <span className="font-medium text-eburon-text">{call.agentName}</span>
-                            <p className="text-xs text-eburon-muted truncate">{call.transcript[0]?.text.substring(0, 40)}...</p>
+                            <span className="font-medium text-text">{call.agentName}</span>
+                            <p className="text-xs text-muted truncate">{call.transcript[0]?.text.substring(0, 40)}...</p>
                         </div>
                         <span className="text-ok font-medium flex-shrink-0 ml-4">{formatDuration(call.duration)}</span>
                     </div>
                 ))}
-                 {callHistory.length === 0 && <p className="text-sm text-center text-eburon-muted py-4">No calls have been made.</p>}
+                 {callHistory.length === 0 && <p className="text-sm text-center text-muted py-4">No calls have been made.</p>}
             </div>
         </Card>
       </div>

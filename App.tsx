@@ -1,5 +1,5 @@
 import React, { useState, createContext, useContext, useEffect, useCallback, useMemo } from 'react';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, Session, User } from '@supabase/supabase-js';
 import { Header } from './components/Header';
 import { LeftNav } from './components/LeftNav';
 import { RightPanel } from './components/RightPanel';
@@ -9,16 +9,17 @@ import AgentsListPage from './pages/AgentsList';
 import KnowledgePage from './pages/Knowledge';
 import VoicesPage from './pages/Voices';
 import DeployPage from './pages/Deploy';
-import AgentBuilderPage from './pages/ImageGenerator'; // Repurposed for Agent Builder
+import AgentBuilderPage from './pages/ImageGenerator';
 import SettingsPage from './pages/Settings';
-import CallHistoryPage from './pages/CallHistory'; // Now serves as the main Calls page
-import DatabasePage from './pages/Database'; // New Page
-import { Agent, View, AgentVersion, CallRecord, Notification, NotificationType } from './types';
+import CallHistoryPage from './pages/CallHistory';
+import DatabasePage from './pages/Database';
+import AuthPage from './pages/Auth';
+import ProfilePage from './pages/Profile';
+import { Agent, View, AgentVersion, CallRecord, Notification, NotificationType, Theme } from './types';
 import { X, CheckCircle, XCircle, Info, AlertTriangle, Loader2 } from 'lucide-react';
 
 // --- Supabase Client Helper ---
 const getSupabaseClient = (): SupabaseClient | null => {
-    // FIX: Use environment variables for Supabase credentials.
     const url = process.env.SUPABASE_URL;
     const key = process.env.SUPABASE_ANON_KEY;
     if (url && key) {
@@ -42,8 +43,6 @@ const dbToAgent = (dbData: any): Omit<Agent, 'history'> => ({
     introSpiel: dbData.intro_spiel || { type: 'Concise' },
 });
 
-// FIX: Update agentToDb to handle objects without `history` or `id`,
-// and to not return `id` in its result, making it suitable for both insert and update operations.
 const agentToDb = (agent: Omit<Agent, 'history' | 'id'> & { id?: string }) => ({
     name: agent.name,
     status: agent.status,
@@ -99,15 +98,15 @@ const NotificationContainer: React.FC = () => {
             {notifications.map((notification) => (
                 <div
                     key={notification.id}
-                    className={`bg-eburon-card border ${BORDER_COLORS[notification.type]} rounded-lg shadow-lg p-4 flex items-start space-x-3`}
+                    className={`bg-card border ${BORDER_COLORS[notification.type]} rounded-lg shadow-lg p-4 flex items-start space-x-3`}
                 >
                     <div className="flex-shrink-0">{ICONS[notification.type]}</div>
                     <div className="flex-1">
-                        <p className="text-sm font-medium text-eburon-text">{notification.message}</p>
+                        <p className="text-sm font-medium text-text">{notification.message}</p>
                     </div>
                     <button
                         onClick={() => removeNotification(notification.id)}
-                        className="text-eburon-muted hover:text-eburon-text"
+                        className="text-muted hover:text-text"
                     >
                         <X size={18} />
                     </button>
@@ -146,6 +145,10 @@ interface AppContextType {
   setIsLeftNavOpen: React.Dispatch<React.SetStateAction<boolean>>;
   isRightPanelOpen: boolean;
   setIsRightPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  session: Session | null;
+  user: User | null;
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -360,10 +363,8 @@ To achieve unparalleled realism, you will internally model your speech using pri
 By internally processing your responses with these structural vocal cues, your delivery will become more dynamic, expressive, and fundamentally human-like.`;
 };
 
-// FIX: Export Department type for use in CallsPage
 export type Department = 'Booking' | 'Refunds' | 'Complaints' | 'Special Needs' | 'Other' | 'General';
 
-// FIX: Export getDepartmentalPrompt function for use in CallsPage
 export const getDepartmentalPrompt = (department: Department, agentName: string, companyName: string, voiceDescription: string): string => {
     const basePrompt = createSystemPrompt(agentName, companyName, voiceDescription);
     let departmentSpecifics = '';
@@ -391,44 +392,9 @@ export const getDepartmentalPrompt = (department: Department, agentName: string,
     return `${basePrompt}\n\nPart 6: Current Task Directive\n\nYour current specialization is: ${departmentSpecifics} Please address the customer's needs accordingly.`;
 };
 
-
-const initialAgentName = 'Turkish Airlines Assistant';
-const initialVoiceDescription = 'A warm, empathetic voice with a slightly slower pace. Sounds reassuring and patient.';
-const initialCompanyName = 'Turkish Airlines';
-const initialPersona = createSystemPrompt(initialAgentName, initialCompanyName, initialVoiceDescription);
-
-const initialAgents: Agent[] = [
-    {
-        id: '1',
-        name: initialAgentName,
-        status: 'Live',
-        language: 'Multilingual',
-        voice: 'Amber',
-        voiceDescription: initialVoiceDescription,
-        updatedAt: '2 hours ago',
-        personaShortText: 'A friendly and helpful airline assistant for premium customers.',
-        persona: initialPersona,
-        tools: ['Knowledge', 'Calendar'],
-        introSpiel: { type: 'Warm' },
-        history: [],
-    },
-     {
-        id: '2',
-        name: 'Global Bank Bot',
-        status: 'Draft',
-        language: 'Multilingual',
-        voice: 'Onyx',
-        voiceDescription: 'A clear, authoritative voice that inspires confidence. Pacing is measured and professional.',
-        updatedAt: '1 day ago',
-        personaShortText: 'A secure and knowledgeable banking assistant.',
-        persona: createSystemPrompt('Global Bank Bot', 'Global Bank', 'A clear, authoritative voice that inspires confidence. Pacing is measured and professional.'),
-        tools: ['Payments', 'Webhook'],
-        introSpiel: { type: 'Concise' },
-        history: [],
-    },
-];
-
 const App: React.FC = () => {
+    const [session, setSession] = useState<Session | null>(null);
+    const [user, setUser] = useState<User | null>(null);
     const [view, setView] = useState<View>('Home');
     const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
     const [agents, setAgents] = useState<Agent[]>([]);
@@ -441,6 +407,17 @@ const App: React.FC = () => {
     const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
     const [isLeftNavOpen, setIsLeftNavOpen] = useState(window.innerWidth > 1024);
     const [isRightPanelOpen, setIsRightPanelOpen] = useState(window.innerWidth > 1024);
+    const [theme, rawSetTheme] = useState<Theme>(() => (localStorage.getItem('theme') as Theme) || 'dark');
+
+    const setTheme = (newTheme: Theme) => {
+        rawSetTheme(newTheme);
+        localStorage.setItem('theme', newTheme);
+        if (newTheme === 'light') {
+            document.documentElement.classList.remove('dark');
+        } else {
+            document.documentElement.classList.add('dark');
+        }
+    };
 
     const removeNotification = useCallback((id: number) => {
         setNotifications(prev => prev.filter(n => n.id !== id));
@@ -451,8 +428,27 @@ const App: React.FC = () => {
         setNotifications(prev => [...prev, { id, message, type }]);
         setTimeout(() => {
             removeNotification(id);
-        }, 5000); // Auto-dismiss after 5 seconds
+        }, 5000);
     }, [removeNotification]);
+
+    useEffect(() => {
+        const supabase = getSupabaseClient();
+        if (supabase) {
+            supabase.auth.getSession().then(({ data: { session } }) => {
+                setSession(session);
+                setUser(session?.user ?? null);
+                setIsLoading(false);
+            });
+
+            const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+                setSession(session);
+                setUser(session?.user ?? null);
+            });
+            return () => subscription.unsubscribe();
+        } else {
+            setIsLoading(false);
+        }
+    }, []);
 
     useEffect(() => {
         const handleResize = () => {
@@ -466,17 +462,18 @@ const App: React.FC = () => {
             }
         };
         window.addEventListener('resize', handleResize);
-        handleResize(); // Initial check
+        handleResize();
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
     useEffect(() => {
+        if (!session) return;
+
         const loadData = async () => {
             setIsLoading(true);
             const supabase = getSupabaseClient();
             if (!supabase) {
-                addNotification('Supabase not configured. Using mock data.', 'warn');
-                setAgents(initialAgents);
+                addNotification('Supabase not configured.', 'warn');
                 setIsSupabaseConnected(false);
                 setIsLoading(false);
                 return;
@@ -484,53 +481,39 @@ const App: React.FC = () => {
             setIsSupabaseConnected(true);
 
             try {
-                // Fetch agents
                 const { data: agentsFromDb, error: agentsError } = await supabase.from('agents').select('*');
                 if (agentsError) throw agentsError;
 
-                if (agentsFromDb && agentsFromDb.length > 0) {
+                if (agentsFromDb) {
                     const agentsWithHistory = await Promise.all(agentsFromDb.map(async (dbAgent) => {
                         const agent = dbToAgent(dbAgent);
                         const { data: versionsFromDb } = await supabase.from('agent_versions').select('*').eq('agent_id', agent.id);
                         return { ...agent, history: versionsFromDb ? versionsFromDb.map(dbToVersion) : [] };
                     }));
                     setAgents(agentsWithHistory);
-                } else {
-                    addNotification('No agents in DB. Seeding with initial data.', 'info');
-                    const supabase = getSupabaseClient();
-                    if (supabase) {
-                        for (const agent of initialAgents) {
-                            const { history, ...agentData } = agent;
-                            await supabase.from('agents').insert(agentToDb(agentData));
-                        }
-                    }
-                    setAgents(initialAgents);
                 }
 
-                // Fetch call history
-                 const { data: callHistoryFromDb, error: callHistoryError } = await supabase.from('call_history').select('*').order('start_time', { ascending: false }).limit(50);
-                 if (callHistoryError) throw callHistoryError;
-                 if (callHistoryFromDb) {
-                     setCallHistory(callHistoryFromDb.map((rec: any) => ({
-                         ...rec,
-                         startTime: Date.parse(rec.start_time),
-                         endTime: Date.parse(rec.end_time),
-                         duration: rec.duration_ms,
-                     })));
-                 }
+                const { data: callHistoryFromDb, error: callHistoryError } = await supabase.from('call_history').select('*').order('start_time', { ascending: false }).limit(50);
+                if (callHistoryError) throw callHistoryError;
+                if (callHistoryFromDb) {
+                    setCallHistory(callHistoryFromDb.map((rec: any) => ({
+                        ...rec,
+                        startTime: Date.parse(rec.start_time),
+                        endTime: Date.parse(rec.end_time),
+                        duration: rec.duration_ms,
+                    })));
+                }
 
             } catch (error) {
                 const message = error instanceof Error ? error.message : "Unknown database error";
                 addNotification(`Failed to load data: ${message}`, 'error');
-                setAgents(initialAgents); // Fallback
             } finally {
                 setIsLoading(false);
             }
         };
 
         loadData();
-    }, [addNotification]);
-
+    }, [session, addNotification]);
 
     useEffect(() => {
         if (!selectedAgent && agents.length > 0) {
@@ -605,7 +588,6 @@ const App: React.FC = () => {
                 status: 'Draft' as const,
             };
             
-            // FIX: Removed unnecessary `as Agent` cast, as `agentToDb` signature is now compatible.
             const { data, error } = await supabase.from('agents').insert(agentToDb(clonedAgentData)).select();
             if (error) throw error;
 
@@ -636,7 +618,6 @@ const App: React.FC = () => {
             
             const { history, ...versionData } = stateToSave;
             const versionToDb = {
-                // FIX: This call is now valid due to the updated `agentToDb` signature.
                 ...agentToDb(versionData),
                 agent_id: agentId,
                 version_number: newVersionNumber,
@@ -695,7 +676,7 @@ const App: React.FC = () => {
                 end_time: new Date(call.endTime).toISOString(),
                 duration_ms: call.duration,
                 transcript: call.transcript,
-                recording_url: call.recordingUrl, // Assuming this is a URL string
+                recording_url: call.recordingUrl,
             };
             const { error } = await supabase.from('call_history').insert(callToDb);
             if (error) throw error;
@@ -724,7 +705,6 @@ const App: React.FC = () => {
                 language: 'Multilingual',
                 voice: 'Amber',
                 voiceDescription: voiceDescription,
-                // FIX: Add 'updatedAt' to satisfy the type requirement for agentToDb on new agent creation.
                 updatedAt: 'Just now',
                 personaShortText: `An AI assistant named ${newAgentName}.`,
                 persona: getDepartmentalPrompt('General', newAgentName, "the company", voiceDescription),
@@ -732,7 +712,6 @@ const App: React.FC = () => {
                 introSpiel: { type: 'Concise' as const },
             };
     
-            // FIX: Removed unnecessary `as Agent` cast, as `agentToDb` signature is now compatible.
             const { data, error } = await supabase.from('agents').insert(agentToDb(newAgentData)).select();
             if (error) throw error;
 
@@ -764,7 +743,8 @@ const App: React.FC = () => {
         isSupabaseConnected,
         isLeftNavOpen, setIsLeftNavOpen,
         isRightPanelOpen, setIsRightPanelOpen,
-    }), [view, selectedAgent, agents, isQuickCreateOpen, versioningAgent, callHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent, cloneAgent, isSupabaseConnected, isLeftNavOpen, isRightPanelOpen]);
+        session, user, theme, setTheme
+    }), [view, selectedAgent, agents, isQuickCreateOpen, versioningAgent, callHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent, cloneAgent, isSupabaseConnected, isLeftNavOpen, isRightPanelOpen, session, user, theme]);
 
     const renderView = () => {
         switch (view) {
@@ -777,30 +757,34 @@ const App: React.FC = () => {
             case 'AgentBuilder': return <AgentBuilderPage />;
             case 'Settings': return <SettingsPage />;
             case 'Database': return <DatabasePage />;
+            case 'Profile': return <ProfilePage />;
             default: return <HomePage />;
         }
     };
     
-    if (isLoading) {
+    if (isLoading && !session) {
         return (
-            <div className="bg-eburon-bg h-screen w-screen flex flex-col items-center justify-center text-eburon-muted">
+            <div className="bg-background h-screen w-screen flex flex-col items-center justify-center text-muted">
                 <Loader2 size={48} className="animate-spin text-brand-teal" />
                 <p className="mt-4 text-lg">Loading Studio...</p>
             </div>
         );
     }
 
+    if (!session) {
+        return <AuthPage addNotification={addNotification} />;
+    }
+
     return (
         <AppContext.Provider value={contextValue}>
-            <div className="bg-eburon-bg text-eburon-text font-sans h-screen w-screen flex flex-col overflow-hidden">
+            <div className="bg-background text-text font-sans h-screen w-screen flex flex-col overflow-hidden">
                 <Header />
                 <div className="flex flex-1 min-h-0 relative">
                     <LeftNav />
-                    <main className="flex-1 overflow-y-auto bg-eburon-bg">
+                    <main className="flex-1 overflow-y-auto bg-background">
                         {renderView()}
                     </main>
                     <RightPanel />
-                    {/* Backdrop for mobile */}
                     {(isLeftNavOpen || isRightPanelOpen) && (
                         <div 
                             className="fixed inset-0 bg-black/50 z-30 lg:hidden" 
@@ -815,23 +799,23 @@ const App: React.FC = () => {
             {versioningAgent && <AgentVersionsModal data={versioningAgent} onClose={() => setVersioningAgent(null)} />}
             {isQuickCreateOpen && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm" onClick={() => setIsQuickCreateOpen(false)}>
-                    <div className="bg-eburon-card border border-eburon-border rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                    <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-lg font-semibold">Create New Agent</h2>
-                            <button onClick={() => setIsQuickCreateOpen(false)}><X size={20} className="text-eburon-muted hover:text-eburon-text"/></button>
+                            <button onClick={() => setIsQuickCreateOpen(false)}><X size={20} className="text-muted hover:text-text"/></button>
                         </div>
                         <form onSubmit={handleCreateAgent}>
-                            <label htmlFor="newAgentName" className="block text-sm font-medium text-eburon-muted mb-2">Agent Name</label>
+                            <label htmlFor="newAgentName" className="block text-sm font-medium text-muted mb-2">Agent Name</label>
                             <input
                                 id="newAgentName"
                                 type="text"
                                 value={newAgentName}
                                 onChange={e => setNewAgentName(e.target.value)}
                                 placeholder="e.g., Banking Support Bot"
-                                className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none"
+                                className="w-full bg-background border border-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none"
                             />
                             <div className="mt-6 flex justify-end space-x-3">
-                                <button type="button" onClick={() => setIsQuickCreateOpen(false)} className="px-4 py-2 rounded-lg bg-eburon-border hover:bg-white/10">Cancel</button>
+                                <button type="button" onClick={() => setIsQuickCreateOpen(false)} className="px-4 py-2 rounded-lg bg-border hover:bg-white/10">Cancel</button>
                                 <button type="submit" className="px-4 py-2 rounded-lg bg-brand-teal text-eburon-bg font-semibold hover:opacity-90 disabled:opacity-50" disabled={!newAgentName.trim()}>Create Agent</button>
                             </div>
                         </form>

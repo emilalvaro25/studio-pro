@@ -32,16 +32,16 @@ export const RightPanel: React.FC = () => {
 
   const renderQuickActions = () => (
     <div className="space-y-2">
-        <button onClick={() => setIsQuickCreateOpen(true)} className="flex items-center w-full p-2 rounded-lg bg-eburon-border hover:bg-white/10 transition-colors">
+        <button onClick={() => setIsQuickCreateOpen(true)} className="flex items-center w-full p-2 rounded-lg bg-border hover:bg-primary/10 transition-colors">
             <Plus size={16} className="mr-2 text-brand-teal"/> New Agent
         </button>
-         <button onClick={handleClone} className="flex items-center w-full p-2 rounded-lg bg-eburon-border hover:bg-white/10 transition-colors">
+         <button onClick={handleClone} className="flex items-center w-full p-2 rounded-lg bg-border hover:bg-primary/10 transition-colors">
             <Copy size={16} className="mr-2 text-brand-gold"/> Clone Agent
         </button>
-         <button onClick={handleMakeLive} className="flex items-center w-full p-2 rounded-lg bg-eburon-border hover:bg-white/10 transition-colors">
+         <button onClick={handleMakeLive} className="flex items-center w-full p-2 rounded-lg bg-border hover:bg-primary/10 transition-colors">
             <Rocket size={16} className="mr-2 text-ok"/> Make Live
         </button>
-         <button onClick={handleDelete} className="flex items-center w-full p-2 rounded-lg bg-eburon-border hover:bg-red-500/20 text-danger transition-colors">
+         <button onClick={handleDelete} className="flex items-center w-full p-2 rounded-lg bg-border hover:bg-red-500/20 text-danger transition-colors">
             <Trash2 size={16} className="mr-2"/> Delete Agent
         </button>
     </div>
@@ -50,31 +50,31 @@ export const RightPanel: React.FC = () => {
   const renderProperties = () => selectedAgent && (
     <div className="space-y-4 text-xs">
         <div>
-            <label className="block text-eburon-muted mb-1">Name</label>
-            <p className="text-eburon-text">{selectedAgent.name}</p>
+            <label className="block text-muted mb-1">Name</label>
+            <p className="text-text">{selectedAgent.name}</p>
         </div>
         <div>
-            <label className="block text-eburon-muted mb-1">Status</label>
-            <p className="text-eburon-text">{selectedAgent.status}</p>
+            <label className="block text-muted mb-1">Status</label>
+            <p className="text-text">{selectedAgent.status}</p>
         </div>
          <div>
-            <label className="block text-eburon-muted mb-1">Language</label>
-            <p className="text-eburon-text">{selectedAgent.language}</p>
+            <label className="block text-muted mb-1">Language</label>
+            <p className="text-text">{selectedAgent.language}</p>
         </div>
         <div>
-            <label className="block text-eburon-muted mb-1">Voice</label>
-            <p className="text-eburon-text">{selectedAgent.voice}</p>
+            <label className="block text-muted mb-1">Voice</label>
+            <p className="text-text">{selectedAgent.voice}</p>
         </div>
          <div>
-            <label className="block text-eburon-muted mb-1">Persona</label>
-            <p className="text-eburon-text leading-relaxed">{selectedAgent.personaShortText}</p>
+            <label className="block text-muted mb-1">Persona</label>
+            <p className="text-text leading-relaxed">{selectedAgent.personaShortText}</p>
         </div>
          <div>
-            <label className="block text-eburon-muted mb-1">Tools</label>
+            <label className="block text-muted mb-1">Tools</label>
              <div className="flex flex-wrap gap-2 mt-1">
                 {selectedAgent.tools.length > 0 ? selectedAgent.tools.map(tool => (
-                    <span key={tool} className="bg-eburon-border px-2 py-1 rounded">{tool}</span>
-                )) : <span className="text-eburon-muted">None</span>}
+                    <span key={tool} className="bg-border px-2 py-1 rounded">{tool}</span>
+                )) : <span className="text-muted">None</span>}
             </div>
         </div>
     </div>
@@ -89,7 +89,7 @@ export const RightPanel: React.FC = () => {
   }
 
   return (
-    <aside className={`bg-eburon-card border-l border-eburon-border flex-col z-40
+    <aside className={`bg-card border-l border-border flex-col z-40
         fixed inset-y-0 right-0
         transform transition-transform lg:transition-all duration-300 ease-in-out
         ${isRightPanelOpen ? 'translate-x-0' : 'translate-x-full'}
@@ -98,22 +98,22 @@ export const RightPanel: React.FC = () => {
     `}>
         <button 
             onClick={() => setIsRightPanelOpen(prev => !prev)}
-            className="hidden lg:flex items-center justify-center absolute top-1/2 -left-4 transform -translate-y-1/2 bg-eburon-border text-eburon-muted hover:text-eburon-text rounded-full p-1 z-50 border-4 border-eburon-bg"
+            className="hidden lg:flex items-center justify-center absolute top-1/2 -left-4 transform -translate-y-1/2 bg-border text-muted hover:text-text rounded-full p-1 z-50 border-4 border-background"
             aria-label={isRightPanelOpen ? "Collapse panel" : "Expand panel"}
         >
             {isRightPanelOpen ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
         </button>
 
         {!selectedAgent ? (
-            <div className="text-center text-eburon-muted mt-10">No agent selected.</div>
+            <div className="text-center text-muted mt-10">No agent selected.</div>
         ) : (
             <>
-                <h2 className="text-lg font-semibold text-eburon-text">{selectedAgent.name}</h2>
-                <div className="flex border-b border-eburon-border mt-4">
+                <h2 className="text-lg font-semibold text-text">{selectedAgent.name}</h2>
+                <div className="flex border-b border-border mt-4">
                     {(['Properties', 'Actions'] as Tab[]).map(tab => (
                         <button key={tab} 
                           onClick={() => setActiveTab(tab)}
-                          className={`px-3 py-2 text-sm transition-colors ${activeTab === tab ? 'text-brand-teal border-b-2 border-brand-teal' : 'text-eburon-muted hover:text-eburon-text'}`}>
+                          className={`px-3 py-2 text-sm transition-colors ${activeTab === tab ? 'text-brand-teal border-b-2 border-brand-teal' : 'text-muted hover:text-text'}`}>
                             {tab}
                         </button>
                     ))}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Copy, Check } from 'lucide-react';
 import { useAppContext } from '../App';
 
@@ -32,6 +32,9 @@ CREATE TABLE agents (
 ALTER TABLE agents ENABLE ROW LEVEL SECURITY;
 -- Example policy: Allow public read-only access. Modify as needed for your auth rules.
 CREATE POLICY "Allow public read access to agents" ON agents FOR SELECT USING (true);
+-- Example policy: Allow users to manage their own agents.
+-- CREATE POLICY "Allow individual management of agents" ON agents FOR ALL
+-- USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 
 -- 3. Create 'agent_versions' to track changes to each agent over time.
@@ -125,19 +128,19 @@ const DatabasePage: React.FC = () => {
 
     return (
         <div className="p-6 h-full flex flex-col">
-            <h1 className="text-xl font-semibold text-eburon-text mb-2">Database Schema</h1>
-            <p className="text-eburon-muted mb-6">
+            <h1 className="text-xl font-semibold text-text mb-2">Database Schema</h1>
+            <p className="text-muted mb-6">
                 Use this SQL schema to set up your Supabase PostgreSQL database. This allows you to own and manage your agent data.
             </p>
-            <div className="relative flex-1 bg-eburon-bg border border-eburon-border rounded-xl overflow-hidden">
+            <div className="relative flex-1 bg-background border border-border rounded-xl overflow-hidden">
                 <button
                     onClick={copyToClipboard}
-                    className="absolute top-3 right-3 flex items-center space-x-2 bg-eburon-border text-eburon-text font-semibold px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors z-10"
+                    className="absolute top-3 right-3 flex items-center space-x-2 bg-border text-text font-semibold px-3 py-1.5 rounded-lg hover:bg-primary/10 transition-colors z-10"
                 >
                     <Copy size={16} />
                     <span>Copy Schema</span>
                 </button>
-                <pre className="h-full w-full overflow-auto p-4 font-mono text-sm text-eburon-text">
+                <pre className="h-full w-full overflow-auto p-4 font-mono text-sm text-text">
                     <code>
                         {schemaContent.trim()}
                     </code>
