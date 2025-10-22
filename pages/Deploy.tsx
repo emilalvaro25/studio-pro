@@ -63,8 +63,8 @@ const DeployPage: React.FC = () => {
                  <div>
                     <label className="block text-sm font-medium text-eburon-muted mb-2">3. Endpoints & Snippets</label>
                     <div className="space-y-4">
-                        <SnippetCard title="HTTPS POST" content={`https://api.eburon.studio/v1/calls/${deploymentSlug}`} />
-                        <SnippetCard title="SIP URI" content={`sip:${deploymentSlug}@eburon.studio`} />
+                        <SnippetCard title="HTTPS POST" content={`https://api.eburon.ai/v1/calls/${deploymentSlug}`} />
+                        <SnippetCard title="SIP URI" content={`sip:${deploymentSlug}@eburon.ai`} />
                         <SnippetCard title="WebRTC Widget" content={`<EburonCallWidget agentId="${deploymentSlug}" />`} />
                     </div>
                 </div>
