@@ -1,4 +1,5 @@
-import React from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Plus, MoreVertical, Play, Edit, Bot, History } from 'lucide-react';
 import { useAppContext } from '../App';
 import { Agent, AgentStatus } from '../types';
@@ -12,8 +13,61 @@ const StatusPill: React.FC<{ status: AgentStatus }> = ({ status }) => {
   return <span className={`px-2 py-1 text-xs rounded-full font-medium ${styles[status]}`}>{status}</span>;
 };
 
+type OperationalStatus = 'Idle' | 'Busy' | 'Offline';
+
+const OperationalStatusIndicator: React.FC<{ status: OperationalStatus }> = ({ status }) => {
+    const styles: Record<OperationalStatus, { text: string; color: string }> = {
+        Idle: { text: 'Idle', color: 'bg-ok' },
+        Busy: { text: 'Busy', color: 'bg-warn' },
+        Offline: { text: 'Offline', color: 'bg-eburon-muted' },
+    };
+    const currentStatus = styles[status];
+
+    return (
+        <div className="flex items-center space-x-2">
+            <div className={`w-2 h-2 rounded-full ${currentStatus.color}`}></div>
+            <span className="text-sm text-eburon-text">{currentStatus.text}</span>
+        </div>
+    );
+};
+
 const AgentsListPage: React.FC = () => {
     const { agents, setSelectedAgent, setIsQuickCreateOpen, setView, handleStartTest, setVersioningAgent } = useAppContext();
+    const [operationalStatuses, setOperationalStatuses] = useState<Record<string, OperationalStatus>>({});
+
+    useEffect(() => {
+        const statuses: OperationalStatus[] = ['Idle', 'Busy', 'Offline'];
+        
+        // Initialize statuses for all agents
+        const initialStatuses = agents.reduce((acc, agent) => {
+            acc[agent.id] = statuses[Math.floor(Math.random() * statuses.length)];
+            return acc;
+        }, {} as Record<string, OperationalStatus>);
+        setOperationalStatuses(initialStatuses);
+
+        // Simulate real-time updates
+        const intervalId = setInterval(() => {
+            if (agents.length > 0) {
+                setOperationalStatuses(prevStatuses => {
+                    const agentIds = Object.keys(prevStatuses);
+                    if (agentIds.length === 0) return prevStatuses;
+
+                    const randomAgentId = agentIds[Math.floor(Math.random() * agentIds.length)];
+                    const currentStatus = prevStatuses[randomAgentId];
+                    const availableStatuses = statuses.filter(s => s !== currentStatus);
+                    const newStatus = availableStatuses[Math.floor(Math.random() * availableStatuses.length)];
+                    
+                    return {
+                        ...prevStatuses,
+                        [randomAgentId]: newStatus,
+                    };
+                });
+            }
+        }, 5000); // Update a random agent's status every 5 seconds
+
+        return () => clearInterval(intervalId);
+    }, [agents]);
+
 
     const handleEdit = (e: React.MouseEvent, agent: Agent) => {
         e.stopPropagation();
@@ -55,7 +109,8 @@ const AgentsListPage: React.FC = () => {
                         <thead className="border-b border-eburon-border text-xs text-eburon-muted uppercase">
                             <tr>
                                 <th className="p-4 font-medium">Name</th>
-                                <th className="p-4 font-medium">Status</th>
+                                <th className="p-4 font-medium">Config Status</th>
+                                <th className="p-4 font-medium">Real-time Status</th>
                                 <th className="p-4 font-medium">Language</th>
                                 <th className="p-4 font-medium">Voice</th>
                                 <th className="p-4 font-medium">Updated</th>
@@ -67,6 +122,9 @@ const AgentsListPage: React.FC = () => {
                                 <tr key={agent.id} className="hover:bg-white/5 cursor-pointer" onClick={() => setSelectedAgent(agent)}>
                                     <td className="p-4 font-semibold text-eburon-text">{agent.name}</td>
                                     <td className="p-4"><StatusPill status={agent.status} /></td>
+                                    <td className="p-4">
+                                        {operationalStatuses[agent.id] && <OperationalStatusIndicator status={operationalStatuses[agent.id]} />}
+                                    </td>
                                     <td className="p-4 text-eburon-muted">{agent.language}</td>
                                     <td className="p-4 text-eburon-muted">{agent.voice}</td>
                                     <td className="p-4 text-eburon-muted">{agent.updatedAt}</td>

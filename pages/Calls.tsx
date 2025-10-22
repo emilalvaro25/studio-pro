@@ -1,33 +1,27 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Phone, PhoneOff, Mic, MicOff, Volume2, User, Bot, Delete, Circle, Pause, Play as PlayIcon } from 'lucide-react';
-// FIX: Remove deprecated 'LiveSession' and alias 'Blob' to 'GenAIBlob' to avoid naming conflicts with the native Blob type.
 import { GoogleGenAI, LiveServerMessage, Modality, Blob as GenAIBlob } from '@google/genai';
 import { decode, encode, decodeAudioData } from '../services/audioUtils';
 import { TranscriptLine, CallRecord } from '../types';
 import { useAppContext } from '../App';
 import { getDepartmentalPrompt, Department } from '../App';
 
-// Sound effects from reliable, stable public domain sources to prevent hotlinking or availability issues.
+// --- Web Audio Synthesizer for UI Sounds ---
+// Uses Web Audio API to generate sounds directly, avoiding file loading issues.
+
+// DTMF Frequencies (ITU-T Rec. Q.23)
+const DTMF: Record<string, [number, number]> = {
+    '1': [697, 1209], '2': [697, 1336], '3': [697, 1477],
+    '4': [770, 1209], '5': [770, 1336], '6': [770, 1477],
+    '7': [852, 1209], '8': [852, 1336], '9': [852, 1477],
+    '*': [941, 1209], '0': [941, 1336], '#': [941, 1477],
+};
+
+// Hold music is complex and remains a file-based source.
 const SOUND_SOURCES = {
-    BACKGROUND_AMBIENCE: [
-        { src: 'https://archive.org/download/office-ambience/Office-ambience.mp3', type: 'audio/mpeg' },
-    ],
     HOLD_MUSIC: [
-        // This Pixabay link has been reliable.
         { src: 'https://cdn.pixabay.com/audio/2022/05/27/audio_1811b37ac8.mp3', type: 'audio/mpeg' },
-    ],
-    KEYPAD_TONE: [
-        { src: 'https://archive.org/download/dtmf-touch-tones/1.mp3', type: 'audio/mpeg' },
-        { src: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Dtmf1.ogg', type: 'audio/ogg' },
-    ],
-    RINGING_TONE: [
-        { src: 'https://archive.org/download/classic-telephone-ringtone/classic-telephone-ringtone.mp3', type: 'audio/mpeg' },
-        { src: 'https://upload.wikimedia.org/wikipedia/commons/2/25/Telephone-ring-US.ogg', type: 'audio/ogg' },
-    ],
-    FAIL_TONE: [
-        { src: 'https://archive.org/download/Busy_Signal/Busy_Signal_1.mp3', type: 'audio/mpeg' },
-        { src: 'https://upload.wikimedia.org/wikipedia/commons/c/ca/Busy-signal.ogg', type: 'audio/ogg' },
     ],
 };
 
@@ -51,13 +45,11 @@ const drawVisualizer = (
     canvas: HTMLCanvasElement,
     color: string
 ) => {
-    const bufferLength = analyser.frequencyBinCount; // e.g., 128 with fftSize=256
+    const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
     analyser.getByteFrequencyData(dataArray);
 
     canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Display fewer bars for a cleaner look.
     const numBars = 64;
     const barWidth = canvas.width / numBars;
 
@@ -65,30 +57,22 @@ const drawVisualizer = (
     gradient.addColorStop(0.1, color);
     gradient.addColorStop(0.6, `${color}A0`);
     gradient.addColorStop(1, `${color}30`);
-
     canvasCtx.fillStyle = gradient;
     
-    // We have more data points (e.g., 128) than bars (64), so let's average them.
     const step = Math.floor(bufferLength / numBars);
 
     for (let i = 0; i < numBars; i++) {
         let sum = 0;
-        // Average a few data points for each bar
         for (let j = 0; j < step; j++) {
             sum += dataArray[i * step + j];
         }
         const avg = step > 0 ? sum / step : dataArray[i];
-
-        // Apply a non-linear scale to make quiet sounds more visible and prevent clipping.
-        // This makes the visualizer feel more "alive".
         const barHeight = Math.pow(avg / 255.0, 2.2) * canvas.height;
-
-        // Draw from the vertical center
         const x = i * barWidth;
         const y = (canvas.height - barHeight) / 2;
 
         if (barHeight > 0) {
-            canvasCtx.fillRect(x, y, barWidth - 1, barHeight); // -1 for spacing
+            canvasCtx.fillRect(x, y, barWidth - 1, barHeight);
         }
     }
 };
@@ -110,10 +94,10 @@ const IVR_CONFIG = {
         prompt: (agentName: string) => `Thank you for calling ${agentName.split(' ')[0]}. For English, press 1. Para Español, oprima el número dos.`,
         timeout: 7000,
         handleKeyPress: (key: string): { nextState: IvrState, department?: Department } | null => {
-            if (key === '1' || key === '2') { // Accept both English and Spanish
+            if (key === '1' || key === '2') {
                 return { nextState: 'main_menu' };
             }
-            return null; // Invalid input
+            return null;
         }
     },
     main_menu: {
@@ -127,11 +111,10 @@ const IVR_CONFIG = {
             if (department) {
                 return { nextState: 'routing', department };
             }
-            return null; // Invalid input
+            return null;
         }
     }
 };
-
 
 const CallsPage: React.FC = () => {
     const { selectedAgent, addCallToHistory } = useAppContext();
@@ -141,7 +124,7 @@ const CallsPage: React.FC = () => {
     const [isHolding, setIsHolding] = useState(false);
     const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
     const [dialedNumber, setDialedNumber] = useState('');
-    const isRecording = true; // Always record calls now
+    const isRecording = true;
     const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
     const [isBgSoundActive, setIsBgSoundActive] = useState(false);
     const [callStartTime, setCallStartTime] = useState<number | null>(null);
@@ -157,11 +140,7 @@ const CallsPage: React.FC = () => {
     const transcriptRef = useRef(transcript);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordedChunksRef = useRef<Blob[]>([]);
-    const audioBgRef = useRef<HTMLAudioElement | null>(null);
     const holdMusicRef = useRef<HTMLAudioElement | null>(null);
-    const keypadToneRef = useRef<HTMLAudioElement | null>(null);
-    const ringingToneRef = useRef<HTMLAudioElement | null>(null);
-    const failToneRef = useRef<HTMLAudioElement | null>(null);
     const ivrTimeoutRef = useRef<number | null>(null);
     const callStatusRef = useRef(callStatus);
 
@@ -171,69 +150,192 @@ const CallsPage: React.FC = () => {
     const outputAnalyserRef = useRef<AnalyserNode | null>(null);
     const animationFrameRef = useRef<number | null>(null);
 
-    useEffect(() => {
-        callStatusRef.current = callStatus;
-    }, [callStatus]);
+    // --- Web Audio Synthesizer for UI Sounds ---
+    const uiAudioContextRef = useRef<AudioContext | null>(null);
+    const uiMasterGainRef = useRef<GainNode | null>(null);
+    const ringingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const failToneIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const bgNodesRef = useRef<{ src: AudioBufferSourceNode; modOsc: OscillatorNode; } | null>(null);
 
-    useEffect(() => {
-        transcriptRef.current = transcript;
-    }, [transcript]);
-
-    useEffect(() => {
-        const audioEl = audioBgRef.current;
-        if (audioEl) {
-            if (isBgSoundActive) {
-                audioEl.volume = 0.1; // Low volume
-                audioEl.play().catch(error => console.warn("Background audio playback failed:", error));
-            } else {
-                audioEl.pause();
-                audioEl.currentTime = 0;
-            }
+    const ensureUiAudioContext = useCallback(() => {
+        if (!uiAudioContextRef.current) {
+            const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            uiAudioContextRef.current = ctx;
+            const masterGain = ctx.createGain();
+            masterGain.gain.value = 0.7; // Master volume for UI sounds
+            masterGain.connect(ctx.destination);
+            uiMasterGainRef.current = masterGain;
         }
-        return () => {
-            audioEl?.pause();
-        };
-    }, [isBgSoundActive]);
+        if (uiAudioContextRef.current.state === 'suspended') {
+            uiAudioContextRef.current.resume();
+        }
+        return uiAudioContextRef.current;
+    }, []);
 
+    const playTones = useCallback((frequencies: number[], { duration = 200, gain = 0.5, type = 'sine' }: { duration?: number, gain?: number, type?: OscillatorType }) => {
+        const ctx = ensureUiAudioContext();
+        if (!ctx || !uiMasterGainRef.current) return;
+
+        const mainGain = ctx.createGain();
+        mainGain.connect(uiMasterGainRef.current);
+
+        const t0 = ctx.currentTime;
+        const tEnd = t0 + duration / 1000;
+
+        mainGain.gain.setValueAtTime(0, t0);
+        mainGain.gain.linearRampToValueAtTime(gain, t0 + 0.01);
+        mainGain.gain.setValueAtTime(gain, tEnd - 0.02);
+        mainGain.gain.linearRampToValueAtTime(0, tEnd);
+
+        frequencies.forEach(freq => {
+            const osc = ctx.createOscillator();
+            osc.type = type;
+            osc.frequency.value = freq;
+            osc.connect(mainGain);
+            osc.start(t0);
+            osc.stop(tEnd + 0.01);
+        });
+    }, [ensureUiAudioContext]);
+    
+    const playRingTone = useCallback(() => playTones([440, 480], { duration: 2000, gain: 0.5 }), [playTones]);
+    const playDtmfTone = useCallback((key: string) => { if (DTMF[key]) playTones(DTMF[key], { duration: 180, gain: 0.3 }) }, [playTones]);
+    
+    const stopRinging = useCallback(() => {
+        if (ringingIntervalRef.current) clearInterval(ringingIntervalRef.current);
+        ringingIntervalRef.current = null;
+    }, []);
+
+    const startRinging = useCallback(() => {
+        stopRinging();
+        playRingTone();
+        ringingIntervalRef.current = setInterval(playRingTone, 6000);
+    }, [playRingTone, stopRinging]);
+    
+    const stopFailTone = useCallback(() => {
+        if(failToneIntervalRef.current) clearInterval(failToneIntervalRef.current);
+        failToneIntervalRef.current = null;
+    }, []);
+
+    const playFailTone = useCallback(() => {
+        stopFailTone();
+        const playBeep = () => playTones([480, 620], { duration: 400, gain: 0.4 });
+        playBeep();
+        failToneIntervalRef.current = setInterval(playBeep, 800);
+        setTimeout(() => stopFailTone(), 4000);
+    }, [playTones, stopFailTone]);
+
+    const startBgAmbience = useCallback(() => {
+        const ctx = ensureUiAudioContext();
+        if (!ctx || !uiMasterGainRef.current || bgNodesRef.current) return;
+        
+        const noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+        const data = noiseBuf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+
+        const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+        const bp1 = ctx.createBiquadFilter(); bp1.type = "bandpass"; bp1.frequency.value = 1000; bp1.Q.value = 0.7;
+        const bp2 = ctx.createBiquadFilter(); bp2.type = "bandpass"; bp2.frequency.value = 600; bp2.Q.value = 0.6;
+        const mainGain = ctx.createGain(); mainGain.gain.value = 0.05; // very quiet
+        
+        const modOsc = ctx.createOscillator(); modOsc.type = "sine"; modOsc.frequency.value = 0.25;
+        const modGain = ctx.createGain(); modGain.gain.value = 0.1;
+        
+        src.connect(bp1).connect(bp2).connect(mainGain).connect(uiMasterGainRef.current);
+        modOsc.connect(modGain).connect(mainGain.gain);
+        
+        src.start(); modOsc.start();
+        bgNodesRef.current = { src, modOsc };
+    }, [ensureUiAudioContext]);
+    
+    const stopBgAmbience = useCallback(() => {
+        const nodes = bgNodesRef.current;
+        if (!nodes) return;
+        try { nodes.src.stop(); nodes.modOsc.stop(); } catch {}
+        bgNodesRef.current = null;
+    }, []);
+    // --- End Web Audio ---
+
+    useEffect(() => { callStatusRef.current = callStatus; }, [callStatus]);
+    useEffect(() => { transcriptRef.current = transcript; }, [transcript]);
+
+    useEffect(() => {
+        if (isBgSoundActive) startBgAmbience();
+        else stopBgAmbience();
+    }, [isBgSoundActive, startBgAmbience, stopBgAmbience]);
 
     const addTranscript = useCallback((line: Omit<TranscriptLine, 'timestamp'>) => {
         setTranscript(prev => [...prev, { ...line, timestamp: Date.now() }]);
     }, []);
     
+    const endCall = useCallback(() => {
+        if (callStatusRef.current === 'idle' || callStatusRef.current === 'ended') return;
+
+        setCallStatus('ended');
+        setIvrState('ended');
+        clearTimeout(ivrTimeoutRef.current as number);
+        stopRinging();
+        stopFailTone();
+        
+        const holdMusic = holdMusicRef.current;
+        if (holdMusic && !holdMusic.paused) { holdMusic.pause(); holdMusic.currentTime = 0; }
+        
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+
+        sessionRef.current?.close(); sessionRef.current = null;
+        
+        scriptProcessorRef.current?.disconnect(); scriptProcessorRef.current = null;
+        if(inputAudioContextRef.current?.state !== 'closed') inputAudioContextRef.current?.close();
+        if(outputAudioContextRef.current?.state !== 'closed') outputAudioContextRef.current?.close();
+        
+        mediaStreamRef.current?.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
+        
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.onstop = () => {
+                const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
+                const url = URL.createObjectURL(blob);
+                setRecordedAudioUrl(url);
+                
+                if (selectedAgent && callStartTime) {
+                    const endTime = Date.now();
+                    const call: CallRecord = {
+                        id: `call_${Date.now()}`, agentId: selectedAgent.id, agentName: selectedAgent.name,
+                        startTime: callStartTime, endTime: endTime, duration: endTime - callStartTime,
+                        transcript: transcriptRef.current, recordingUrl: url,
+                    };
+                    addCallToHistory(call);
+                }
+                recordedChunksRef.current = [];
+            };
+            mediaRecorderRef.current.stop();
+        }
+    }, [addCallToHistory, callStartTime, selectedAgent, stopFailTone, stopRinging]);
 
     const startCall = async () => {
-        if (!selectedAgent) return;
+        if (!selectedAgent || callStatusRef.current === 'connecting' || callStatusRef.current === 'connected') return;
+        
         setDialedNumber('');
         setCallStatus('connecting');
         setIvrState('ringing');
-        ringingToneRef.current?.play().catch(e => console.error("Ringing tone failed to play:", e));
         
-        // Simulate ringing for a few seconds before "connecting"
-        setTimeout(() => {
-            const ringTone = ringingToneRef.current;
-            // FIX: Only pause if it's actually playing to avoid race conditions.
-            if (ringTone && !ringTone.paused) {
-                ringTone.pause();
-                ringTone.currentTime = 0;
-            }
+        ensureUiAudioContext();
+        startRinging();
 
-            // FIX: Only proceed if the call wasn't cancelled during ringing.
+        const ivrStartTime = 8000; // FIX: Changed from 14000 to 8000
+        ivrTimeoutRef.current = setTimeout(() => {
             if (callStatusRef.current === 'connecting') {
+                stopRinging();
                 setIvrState('language_select');
             }
-        }, 3000);
+        }, ivrStartTime);
     };
-
 
     const connectToAgent = useCallback(async (department: Department) => {
         if (!selectedAgent || !process.env.API_KEY) {
             console.error("Agent or API_KEY not selected.");
             setCallStatus('ended');
-            const tone = failToneRef.current;
-            if (tone) {
-                tone.currentTime = 0;
-                tone.play().catch(e => console.error("Failed to play fail tone", e));
-            }
+            playFailTone();
             return;
         }
 
@@ -244,32 +346,22 @@ const CallsPage: React.FC = () => {
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
-            // Audio Contexts
             inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
             outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
             
-            // Visualizer setup
             const inputCtx = inputAudioContextRef.current;
             const outputCtx = outputAudioContextRef.current;
 
             if (inputVisualizerRef.current && outputVisualizerRef.current) {
-                const inputCanvas = inputVisualizerRef.current;
-                const outputCanvas = outputVisualizerRef.current;
-                const inputCanvasCtx = inputCanvas.getContext('2d');
-                const outputCanvasCtx = outputCanvas.getContext('2d');
+                const inputCanvas = inputVisualizerRef.current, outputCanvas = outputVisualizerRef.current;
+                const inputCanvasCtx = inputCanvas.getContext('2d'), outputCanvasCtx = outputCanvas.getContext('2d');
                 
-                inputAnalyserRef.current = inputCtx.createAnalyser();
-                inputAnalyserRef.current.fftSize = 256;
-                outputAnalyserRef.current = outputCtx.createAnalyser();
-                outputAnalyserRef.current.fftSize = 256;
+                inputAnalyserRef.current = inputCtx.createAnalyser(); inputAnalyserRef.current.fftSize = 256;
+                outputAnalyserRef.current = outputCtx.createAnalyser(); outputAnalyserRef.current.fftSize = 256;
 
                 const animate = () => {
-                    if (inputAnalyserRef.current && inputCanvasCtx) {
-                        drawVisualizer(inputAnalyserRef.current, inputCanvasCtx, inputCanvas, '#fbbf24'); // brand-gold
-                    }
-                    if (outputAnalyserRef.current && outputCanvasCtx) {
-                        drawVisualizer(outputAnalyserRef.current, outputCanvasCtx, outputCanvas, '#2dd4bf'); // brand-teal
-                    }
+                    if (inputAnalyserRef.current && inputCanvasCtx) drawVisualizer(inputAnalyserRef.current, inputCanvasCtx, inputCanvas, '#fbbf24');
+                    if (outputAnalyserRef.current && outputCanvasCtx) drawVisualizer(outputAnalyserRef.current, outputCanvasCtx, outputCanvas, '#2dd4bf');
                     animationFrameRef.current = requestAnimationFrame(animate);
                 };
                 animate();
@@ -278,12 +370,9 @@ const CallsPage: React.FC = () => {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaStreamRef.current = stream;
             
-            // Media Recorder setup for user audio
             if (isRecording) {
                 mediaRecorderRef.current = new MediaRecorder(stream);
-                mediaRecorderRef.current.ondataavailable = event => {
-                    recordedChunksRef.current.push(event.data);
-                };
+                mediaRecorderRef.current.ondataavailable = event => recordedChunksRef.current.push(event.data);
                 mediaRecorderRef.current.start();
             }
             
@@ -291,7 +380,6 @@ const CallsPage: React.FC = () => {
                 model: 'gemini-2.5-flash-native-audio-preview-09-2025',
                 callbacks: {
                     onopen: () => {
-                        console.log('Session opened');
                         const source = inputCtx.createMediaStreamSource(stream);
                         scriptProcessorRef.current = inputCtx.createScriptProcessor(4096, 1, 1);
                         
@@ -305,12 +393,8 @@ const CallsPage: React.FC = () => {
                             sessionPromise.then(session => session.sendRealtimeInput({ media: pcmBlob }));
                         };
                         
-                        source.connect(scriptProcessorRef.current);
-                        scriptProcessorRef.current.connect(inputCtx.destination);
-                        
-                        if (inputAnalyserRef.current) {
-                            source.connect(inputAnalyserRef.current);
-                        }
+                        source.connect(scriptProcessorRef.current).connect(inputCtx.destination);
+                        if (inputAnalyserRef.current) source.connect(inputAnalyserRef.current);
                     },
                     onmessage: async (message: LiveServerMessage) => {
                         const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
@@ -318,41 +402,25 @@ const CallsPage: React.FC = () => {
                             nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx.currentTime);
                             const audioBuffer = await decodeAudioData(decode(base64Audio), outputCtx, 24000, 1);
                             
-                            const source = outputCtx.createBufferSource();
-                            source.buffer = audioBuffer;
+                            const sourceNode = outputCtx.createBufferSource();
+                            sourceNode.buffer = audioBuffer;
 
-                            if (outputAnalyserRef.current) {
-                                source.connect(outputAnalyserRef.current);
-                                outputAnalyserRef.current.connect(outputCtx.destination);
-                            } else {
-                                source.connect(outputCtx.destination);
-                            }
+                            const destination = outputAnalyserRef.current ? outputAnalyserRef.current : outputCtx.destination;
+                            sourceNode.connect(destination);
+                            if(outputAnalyserRef.current) outputAnalyserRef.current.connect(outputCtx.destination);
                             
-                            source.addEventListener('ended', () => {
-                                audioSourcesRef.current.delete(source);
-                            });
-                            source.start(nextStartTimeRef.current);
+                            sourceNode.addEventListener('ended', () => audioSourcesRef.current.delete(sourceNode));
+                            sourceNode.start(nextStartTimeRef.current);
                             nextStartTimeRef.current += audioBuffer.duration;
-                            audioSourcesRef.current.add(source);
+                            audioSourcesRef.current.add(sourceNode);
                         }
 
-                        if (message.serverContent?.inputTranscription) {
-                            addTranscript({ speaker: 'You', text: message.serverContent.inputTranscription.text });
-                        }
-                        if (message.serverContent?.outputTranscription) {
-                            addTranscript({ speaker: 'Agent', text: message.serverContent.outputTranscription.text });
-                        }
+                        if (message.serverContent?.inputTranscription) addTranscript({ speaker: 'You', text: message.serverContent.inputTranscription.text });
+                        if (message.serverContent?.outputTranscription) addTranscript({ speaker: 'Agent', text: message.serverContent.outputTranscription.text });
 
                         if (message.serverContent?.interrupted) {
-                            for (const source of audioSourcesRef.current.values()) {
-                                source.stop();
-                                audioSourcesRef.current.delete(source);
-                            }
+                            audioSourcesRef.current.forEach(s => { s.stop(); audioSourcesRef.current.delete(s); });
                             nextStartTimeRef.current = 0;
-                        }
-
-                        if (message.serverContent?.turnComplete) {
-                            console.log('Turn completed');
                         }
                     },
                     onerror: (e: ErrorEvent) => {
@@ -360,108 +428,27 @@ const CallsPage: React.FC = () => {
                         addTranscript({ speaker: 'System', text: `Error: ${e.message}` });
                         endCall();
                     },
-                    onclose: () => {
-                        console.log('Session closed');
-                    },
+                    onclose: () => console.log('Session closed'),
                 },
                 config: {
                     responseModalities: [Modality.AUDIO],
-                    inputAudioTranscription: {},
-                    outputAudioTranscription: {},
-                    speechConfig: {
-                        voiceConfig: {
-                            prebuiltVoiceConfig: { voiceName: VOICE_MAP[selectedAgent.voice] || 'Kore' },
-                        },
-                    },
+                    inputAudioTranscription: {}, outputAudioTranscription: {},
+                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAP[selectedAgent.voice] || 'Kore' }}},
                     systemInstruction: getDepartmentalPrompt(department, selectedAgent.name, 'Turkish Airlines', selectedAgent.voiceDescription),
                 },
             });
-
             sessionRef.current = await sessionPromise;
-
         } catch (error) {
             console.error("Failed to start call:", error);
             addTranscript({ speaker: 'System', text: `Failed to connect. Please check permissions and configuration.` });
             setCallStatus('ended');
-            const tone = failToneRef.current;
-            if (tone) {
-                tone.currentTime = 0;
-                tone.play().catch(e => console.error("Failed to play fail tone", e));
-            }
+            playFailTone();
         }
+    }, [selectedAgent, addTranscript, isMuted, isRecording, playFailTone, endCall]);
 
-    }, [selectedAgent, addTranscript, isMuted, isRecording]);
-
-
-    const endCall = () => {
-        if (callStatusRef.current === 'idle' || callStatusRef.current === 'ended') return;
-
-        setCallStatus('ended');
-        setIvrState('ended');
-        clearTimeout(ivrTimeoutRef.current as number);
-        
-        // FIX: Safely pause audio to prevent race condition errors on quick hang-ups.
-        const ringTone = ringingToneRef.current;
-        if (ringTone && !ringTone.paused) {
-            ringTone.pause();
-            ringTone.currentTime = 0;
-        }
-        const holdMusic = holdMusicRef.current;
-        if (holdMusic && !holdMusic.paused) {
-            holdMusic.pause();
-            holdMusic.currentTime = 0;
-        }
-        
-        if (animationFrameRef.current) {
-            cancelAnimationFrame(animationFrameRef.current);
-            animationFrameRef.current = null;
-        }
-
-        // Clean up session
-        sessionRef.current?.close();
-        sessionRef.current = null;
-        
-        // Clean up audio contexts
-        scriptProcessorRef.current?.disconnect();
-        scriptProcessorRef.current = null;
-        inputAudioContextRef.current?.close();
-        outputAudioContextRef.current?.close();
-        
-        mediaStreamRef.current?.getTracks().forEach(track => track.stop());
-        mediaStreamRef.current = null;
-        
-        // Stop recording and create blob URL
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-            mediaRecorderRef.current.onstop = () => {
-                const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
-                const url = URL.createObjectURL(blob);
-                setRecordedAudioUrl(url);
-                
-                if (selectedAgent && callStartTime) {
-                    const endTime = Date.now();
-                    const call: CallRecord = {
-                        id: `call_${Date.now()}`,
-                        agentId: selectedAgent.id,
-                        agentName: selectedAgent.name,
-                        startTime: callStartTime,
-                        endTime: endTime,
-                        duration: endTime - callStartTime,
-                        transcript: transcriptRef.current,
-                        recordingUrl: url,
-                    };
-                    addCallToHistory(call);
-                }
-                recordedChunksRef.current = [];
-            };
-            mediaRecorderRef.current.stop();
-        }
-    };
     
     useEffect(() => {
-        return () => {
-            // Ensure cleanup happens on component unmount
-            endCall();
-        };
+        return () => { endCall(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -470,8 +457,7 @@ const CallsPage: React.FC = () => {
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash-preview-tts",
-                contents: [{ parts: [{ text }] }],
+                model: "gemini-2.5-flash-preview-tts", contents: [{ parts: [{ text }] }],
                 config: {
                     responseModalities: [Modality.AUDIO],
                     speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } }
@@ -479,36 +465,44 @@ const CallsPage: React.FC = () => {
             });
             const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
             if (base64Audio) {
-                if (!ivrAudioContextRef.current) {
-                     ivrAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-                }
+                if (!ivrAudioContextRef.current) ivrAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
                 const audioCtx = ivrAudioContextRef.current;
+                if (audioCtx.state === 'closed') return; // Prevent errors on closed context
                 const audioBuffer = await decodeAudioData(decode(base64Audio), audioCtx, 24000, 1);
                 const source = audioCtx.createBufferSource();
                 source.buffer = audioBuffer;
                 source.connect(audioCtx.destination);
                 source.start();
-                if (onEnded) {
-                    source.onended = onEnded;
-                }
+                if (onEnded) source.onended = onEnded;
             }
         } catch (error) {
             console.error("IVR prompt failed:", error);
-             if (onEnded) onEnded();
+            if (onEnded) onEnded();
         }
     }, [selectedAgent]);
+    
+    // FIX: Refactored IVR state execution into a reusable function for robustness.
+    const executeIvrState = useCallback((state: IvrState) => {
+        if (callStatusRef.current !== 'connecting') return;
+    
+        const config = IVR_CONFIG[state as keyof typeof IVR_CONFIG];
+        if (config) {
+            const promptText = typeof config.prompt === 'function' ? config.prompt(selectedAgent?.name || 'Customer Service') : config.prompt;
+            
+            playIvrPrompt(promptText, () => {
+               clearTimeout(ivrTimeoutRef.current as number);
+               ivrTimeoutRef.current = setTimeout(() => {
+                   playIvrPrompt("I'm sorry, I didn't get a response. Please call back later. Goodbye.", endCall);
+               }, config.timeout);
+            });
+        }
+    }, [selectedAgent, playIvrPrompt, endCall]);
 
-
+    // FIX: Refactored to be more robust and handle invalid input correctly.
     const handleIvrKeyPress = (key: string) => {
         if (ivrState !== 'language_select' && ivrState !== 'main_menu') return;
         
-        // FIX: Reset and play sound effect to handle rapid presses correctly.
-        const keypadTone = keypadToneRef.current;
-        if (keypadTone) {
-            keypadTone.currentTime = 0;
-            keypadTone.play().catch(e => console.error("Failed to play keypad tone", e));
-        }
-
+        playDtmfTone(key);
         setDialedNumber(prev => prev + key);
         clearTimeout(ivrTimeoutRef.current as number);
 
@@ -526,28 +520,19 @@ const CallsPage: React.FC = () => {
             }
         } else {
             playIvrPrompt("I'm sorry, that's not a valid option. Please try again.", () => {
-                setIvrState(ivrState); // Re-trigger the same state
+                executeIvrState(ivrState); // Re-run the current state prompt
             });
         }
     };
     
+    // FIX: Replaced original effect with a cleaner one using the new executeIvrState function.
     useEffect(() => {
-        if (callStatus === 'connecting' || callStatus === 'connected') {
-            const config = IVR_CONFIG[ivrState as keyof typeof IVR_CONFIG];
-            if (config) {
-                const promptText = typeof config.prompt === 'function' ? config.prompt(selectedAgent?.name || 'Customer Service') : config.prompt;
-                
-                playIvrPrompt(promptText, () => {
-                   ivrTimeoutRef.current = setTimeout(() => {
-                       playIvrPrompt("I didn't receive a response. Goodbye.", endCall);
-                   }, config.timeout);
-                });
-            }
+        if (callStatus === 'connecting' && (ivrState === 'language_select' || ivrState === 'main_menu')) {
+            executeIvrState(ivrState);
         }
-        
         return () => clearTimeout(ivrTimeoutRef.current as number);
+    }, [ivrState, callStatus, executeIvrState]);
 
-    }, [ivrState, callStatus, selectedAgent, playIvrPrompt, endCall]);
 
     const TranscriptView = () => (
         <div aria-live="polite" className="h-full space-y-3 overflow-y-auto pr-2">
@@ -567,20 +552,14 @@ const CallsPage: React.FC = () => {
         setIsHolding(prev => {
             const holdMusic = holdMusicRef.current;
             if (!holdMusic) return !prev;
-
             const newIsHolding = !prev;
-
-            if (newIsHolding) { // Going on hold
+            if (newIsHolding) {
                 holdMusic.play().catch(e => console.error("Hold music failed to play", e));
                 audioSourcesRef.current.forEach(source => source.stop());
                 audioSourcesRef.current.clear();
                 setIsMuted(true);
-            } else { // Coming off hold
-                // FIX: Safely pause audio to prevent race conditions on quick toggles.
-                if (!holdMusic.paused) {
-                    holdMusic.pause();
-                    holdMusic.currentTime = 0;
-                }
+            } else {
+                if (!holdMusic.paused) { holdMusic.pause(); holdMusic.currentTime = 0; }
                 setIsMuted(false);
             }
             return newIsHolding;
@@ -594,28 +573,10 @@ const CallsPage: React.FC = () => {
         { d: '*', s: '' }, { d: '0', s: '+' }, { d: '#', s: '' },
     ];
 
-
     return (
         <div className="p-6 h-full flex items-center justify-center">
-             <audio ref={audioBgRef} loop preload="auto">
-                {SOUND_SOURCES.BACKGROUND_AMBIENCE.map(s => <source key={s.src} src={s.src} type={s.type} />)}
-                Your browser does not support background audio.
-            </audio>
             <audio ref={holdMusicRef} loop preload="auto">
                 {SOUND_SOURCES.HOLD_MUSIC.map(s => <source key={s.src} src={s.src} type={s.type} />)}
-                Your browser does not support hold music audio.
-            </audio>
-            <audio ref={keypadToneRef} preload="auto">
-                {SOUND_SOURCES.KEYPAD_TONE.map(s => <source key={s.src} src={s.src} type={s.type} />)}
-                Your browser does not support keypad tones.
-            </audio>
-            <audio ref={ringingToneRef} loop preload="auto">
-                {SOUND_SOURCES.RINGING_TONE.map(s => <source key={s.src} src={s.src} type={s.type} />)}
-                Your browser does not support ringing tones.
-            </audio>
-            <audio ref={failToneRef} preload="auto">
-                {SOUND_SOURCES.FAIL_TONE.map(s => <source key={s.src} src={s.src} type={s.type} />)}
-                Your browser does not support failure tones.
             </audio>
 
             <div className="w-full max-w-5xl h-[80vh] bg-eburon-card border border-eburon-border rounded-xl flex">
