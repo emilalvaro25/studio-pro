@@ -8,12 +8,28 @@ import { TranscriptLine, CallRecord } from '../types';
 import { useAppContext } from '../App';
 import { getDepartmentalPrompt, Department } from '../App';
 
-// Sound effect URLs from highly reliable public domain sources to prevent loading errors.
-const BACKGROUND_AMBIENCE_URL = "https://upload.wikimedia.org/wikipedia/commons/5/5b/Office-ambience.ogg";
-const HOLD_MUSIC_URL = "https://upload.wikimedia.org/wikipedia/commons/e/e8/The_Lounge.ogg";
-const KEYPAD_TONE_URL = "https://archive.org/download/50_Sound_Effects_Super_Set/50_Sound_Effects_Super_Set-24-Touch_Tone_Phone.mp3";
-const RINGING_TONE_URL = "https://upload.wikimedia.org/wikipedia/commons/8/82/Telephone-ring-US.ogg";
-const FAIL_TONE_URL = "https://upload.wikimedia.org/wikipedia/commons/3/32/US_busy_signal.ogg";
+// Sound effects from reliable, stable public domain sources to prevent hotlinking or availability issues.
+const SOUND_SOURCES = {
+    BACKGROUND_AMBIENCE: [
+        { src: 'https://archive.org/download/office-ambience/Office-ambience.mp3', type: 'audio/mpeg' },
+    ],
+    HOLD_MUSIC: [
+        // This Pixabay link has been reliable.
+        { src: 'https://cdn.pixabay.com/audio/2022/05/27/audio_1811b37ac8.mp3', type: 'audio/mpeg' },
+    ],
+    KEYPAD_TONE: [
+        { src: 'https://archive.org/download/dtmf-touch-tones/1.mp3', type: 'audio/mpeg' },
+        { src: 'https://upload.wikimedia.org/wikipedia/commons/8/82/Dtmf1.ogg', type: 'audio/ogg' },
+    ],
+    RINGING_TONE: [
+        { src: 'https://archive.org/download/classic-telephone-ringtone/classic-telephone-ringtone.mp3', type: 'audio/mpeg' },
+        { src: 'https://upload.wikimedia.org/wikipedia/commons/2/25/Telephone-ring-US.ogg', type: 'audio/ogg' },
+    ],
+    FAIL_TONE: [
+        { src: 'https://archive.org/download/Busy_Signal/Busy_Signal_1.mp3', type: 'audio/mpeg' },
+        { src: 'https://upload.wikimedia.org/wikipedia/commons/c/ca/Busy-signal.ogg', type: 'audio/ogg' },
+    ],
+};
 
 
 const DialerButton: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void, 'data-id'?: string; disabled?: boolean }> = ({ children, className, onClick, 'data-id': dataId, disabled }) => (
@@ -581,11 +597,26 @@ const CallsPage: React.FC = () => {
 
     return (
         <div className="p-6 h-full flex items-center justify-center">
-             <audio ref={audioBgRef} src={BACKGROUND_AMBIENCE_URL} loop />
-             <audio ref={holdMusicRef} src={HOLD_MUSIC_URL} loop />
-             <audio ref={keypadToneRef} src={KEYPAD_TONE_URL} />
-             <audio ref={ringingToneRef} src={RINGING_TONE_URL} loop />
-             <audio ref={failToneRef} src={FAIL_TONE_URL} />
+             <audio ref={audioBgRef} loop preload="auto">
+                {SOUND_SOURCES.BACKGROUND_AMBIENCE.map(s => <source key={s.src} src={s.src} type={s.type} />)}
+                Your browser does not support background audio.
+            </audio>
+            <audio ref={holdMusicRef} loop preload="auto">
+                {SOUND_SOURCES.HOLD_MUSIC.map(s => <source key={s.src} src={s.src} type={s.type} />)}
+                Your browser does not support hold music audio.
+            </audio>
+            <audio ref={keypadToneRef} preload="auto">
+                {SOUND_SOURCES.KEYPAD_TONE.map(s => <source key={s.src} src={s.src} type={s.type} />)}
+                Your browser does not support keypad tones.
+            </audio>
+            <audio ref={ringingToneRef} loop preload="auto">
+                {SOUND_SOURCES.RINGING_TONE.map(s => <source key={s.src} src={s.src} type={s.type} />)}
+                Your browser does not support ringing tones.
+            </audio>
+            <audio ref={failToneRef} preload="auto">
+                {SOUND_SOURCES.FAIL_TONE.map(s => <source key={s.src} src={s.src} type={s.type} />)}
+                Your browser does not support failure tones.
+            </audio>
 
             <div className="w-full max-w-5xl h-[80vh] bg-eburon-card border border-eburon-border rounded-xl flex">
                 <div className="w-1/3 p-6 flex flex-col justify-between border-r border-eburon-border">
