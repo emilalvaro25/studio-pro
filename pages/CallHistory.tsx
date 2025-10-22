@@ -187,7 +187,6 @@ const CallHistoryPage: React.FC = () => {
     const sessionRef = useRef<any | null>(null);
     const inputAudioContextRef = useRef<AudioContext | null>(null);
     const outputAudioContextRef = useRef<AudioContext | null>(null);
-    const ivrAudioContextRef = useRef<AudioContext | null>(null);
     const mediaStreamRef = useRef<MediaStream | null>(null);
     const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
     const nextStartTimeRef = useRef<number>(0);
@@ -262,7 +261,9 @@ const CallHistoryPage: React.FC = () => {
         sessionRef.current?.close(); sessionRef.current = null;
         scriptProcessorRef.current?.disconnect(); scriptProcessorRef.current = null;
         if(inputAudioContextRef.current?.state !== 'closed') inputAudioContextRef.current?.close();
+        inputAudioContextRef.current = null;
         if(outputAudioContextRef.current?.state !== 'closed') outputAudioContextRef.current?.close();
+        outputAudioContextRef.current = null;
         mediaStreamRef.current?.getTracks().forEach(track => track.stop());
         mediaStreamRef.current = null;
         
@@ -356,6 +357,13 @@ const CallHistoryPage: React.FC = () => {
             playFailTone();
             return;
         }
+        const outputCtx = outputAudioContextRef.current;
+        if (!outputCtx) {
+            addNotification('Output audio context not available.', 'error');
+            setCallStatus('ended');
+            playFailTone();
+            return;
+        }
 
         setCallStatus('connected');
         setCallStartTime(Date.now());
@@ -364,8 +372,7 @@ const CallHistoryPage: React.FC = () => {
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-            outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-            const inputCtx = inputAudioContextRef.current, outputCtx = outputAudioContextRef.current;
+            const inputCtx = inputAudioContextRef.current;
 
             if (inputVisualizerRef.current && outputVisualizerRef.current) {
                 const inputCanvas = inputVisualizerRef.current, outputCanvas = outputVisualizerRef.current;
@@ -457,6 +464,13 @@ const CallHistoryPage: React.FC = () => {
             addNotification('Cannot play IVR prompt: API key or agent missing.', 'error');
             return;
         }
+        const audioCtx = outputAudioContextRef.current;
+        if (!audioCtx) {
+            addNotification('Audio system not initialized for IVR.', 'error');
+            if (onEnded) onEnded();
+            return;
+        }
+
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const response = await ai.models.generateContent({
@@ -468,14 +482,14 @@ const CallHistoryPage: React.FC = () => {
             });
             const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
             if (base64Audio) {
-                if (!ivrAudioContextRef.current || ivrAudioContextRef.current.state === 'closed') ivrAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-                const audioCtx = ivrAudioContextRef.current;
                 const audioBuffer = await decodeAudioData(decode(base64Audio), audioCtx, 24000, 1);
                 const source = audioCtx.createBufferSource();
                 source.buffer = audioBuffer;
                 source.connect(audioCtx.destination);
                 source.start();
                 if (onEnded) source.onended = onEnded;
+            } else {
+                throw new Error("TTS API returned no audio data.");
             }
         } catch (error) {
             console.error("IVR prompt failed:", error);
@@ -528,11 +542,19 @@ const CallHistoryPage: React.FC = () => {
 
     const startCall = async () => {
         if (!selectedAgent || callStatus === 'connecting' || callStatus === 'connected') return;
-        setDialedNumber('');
+        resetSimulation(); // Reset state before starting a new call
+        
+        // --- Key Change: Initialize audio context on user interaction ---
+        if (!outputAudioContextRef.current || outputAudioContextRef.current.state === 'closed') {
+            outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        }
+        outputAudioContextRef.current.resume(); // Ensure it's active
+
+        ensureUiAudioContext();
         setCallStatus('connecting');
         setIvrState('ringing');
-        ensureUiAudioContext();
         startRinging();
+        
         ivrTimeoutRef.current = window.setTimeout(() => {
             if (callStatusRef.current === 'connecting') {
                 stopRinging();
