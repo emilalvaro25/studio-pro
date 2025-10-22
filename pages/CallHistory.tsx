@@ -26,10 +26,10 @@ const DTMF: Record<string, [number, number]> = {
 };
 
 const SOUND_SOURCES = {
-    HOLD_MUSIC: [{ src: 'https://cdn.pixabay.com/audio/2022/05/27/audio_1811b37ac8.mp3', type: 'audio/mpeg' }],
-    RING_TONE: [{ src: 'https://cdn.pixabay.com/audio/2022/04/18/audio_517905d21a.mp3', type: 'audio/mpeg' }],
-    FAIL_TONE: [{ src: 'https://cdn.pixabay.com/audio/2022/08/03/audio_533130d7b7.mp3', type: 'audio/mpeg' }],
-    BG_AMBIENCE: [{ src: 'https://cdn.pixabay.com/audio/2022/09/23/audio_7b80d603a1.mp3', type: 'audio/mpeg' }]
+    HOLD_MUSIC: 'https://cdn.pixabay.com/audio/2022/05/27/audio_1811b37ac8.mp3',
+    RING_TONE: 'https://cdn.pixabay.com/audio/2022/04/18/audio_517905d21a.mp3',
+    FAIL_TONE: 'https://cdn.pixabay.com/audio/2022/08/03/audio_533130d7b7.mp3',
+    BG_AMBIENCE: 'https://cdn.pixabay.com/audio/2022/09/23/audio_7b80d603a1.mp3'
 };
 
 const DialerButton: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void, 'data-id'?: string; disabled?: boolean }> = ({ children, className, onClick, 'data-id': dataId, disabled }) => (
@@ -194,10 +194,6 @@ const CallHistoryPage: React.FC = () => {
     const liveTranscriptRef = useRef(liveTranscript);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordedChunksRef = useRef<Blob[]>([]);
-    const holdMusicRef = useRef<HTMLAudioElement | null>(null);
-    const ringToneRef = useRef<HTMLAudioElement | null>(null);
-    const failToneRef = useRef<HTMLAudioElement | null>(null);
-    const bgAmbienceRef = useRef<HTMLAudioElement | null>(null);
     const ivrTimeoutRef = useRef<number | null>(null);
     const callStatusRef = useRef(callStatus);
     const inputVisualizerRef = useRef<HTMLCanvasElement | null>(null);
@@ -205,8 +201,16 @@ const CallHistoryPage: React.FC = () => {
     const inputAnalyserRef = useRef<AnalyserNode | null>(null);
     const outputAnalyserRef = useRef<AnalyserNode | null>(null);
     const animationFrameRef = useRef<number | null>(null);
-    const uiAudioContextRef = useRef<AudioContext | null>(null);
-    const uiMasterGainRef = useRef<GainNode | null>(null);
+
+    // --- Unified Audio Engine Refs ---
+    const ringToneBufferRef = useRef<AudioBuffer | null>(null);
+    const failToneBufferRef = useRef<AudioBuffer | null>(null);
+    const holdMusicBufferRef = useRef<AudioBuffer | null>(null);
+    const bgAmbienceBufferRef = useRef<AudioBuffer | null>(null);
+
+    const ringToneSourceRef = useRef<AudioBufferSourceNode | null>(null);
+    const holdMusicSourceRef = useRef<AudioBufferSourceNode | null>(null);
+    const bgAmbienceSourceRef = useRef<AudioBufferSourceNode | null>(null);
     
     // --- History Logic ---
     useEffect(() => {
@@ -248,14 +252,26 @@ const CallHistoryPage: React.FC = () => {
         setLiveTranscript(prev => [...prev, { ...line, timestamp: Date.now() }]);
     }, []);
 
+    const stopAudioSource = (sourceRef: React.MutableRefObject<AudioBufferSourceNode | null>) => {
+        if (sourceRef.current) {
+            try {
+                sourceRef.current.stop();
+            } catch (e) { /* ignore if already stopped */ }
+            sourceRef.current.disconnect();
+            sourceRef.current = null;
+        }
+    };
+
     const endCall = useCallback(async () => {
         if (callStatusRef.current === 'idle' || callStatusRef.current === 'ended') return;
         setCallStatus('ended');
         setIvrState('ended');
         if(ivrTimeoutRef.current) clearTimeout(ivrTimeoutRef.current);
-        if (ringToneRef.current) { ringToneRef.current.pause(); ringToneRef.current.currentTime = 0; }
-        if (failToneRef.current) { failToneRef.current.pause(); failToneRef.current.currentTime = 0; }
-        if (holdMusicRef.current) { holdMusicRef.current.pause(); holdMusicRef.current.currentTime = 0; }
+        
+        stopAudioSource(ringToneSourceRef);
+        stopAudioSource(holdMusicSourceRef);
+        stopAudioSource(bgAmbienceSourceRef);
+
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
         sessionRef.current?.close(); sessionRef.current = null;
@@ -307,48 +323,49 @@ const CallHistoryPage: React.FC = () => {
         }
     }, [addCallToHistory, callStartTime, selectedAgent, supabase, addNotification, isDemoMode]);
 
-    const ensureUiAudioContext = useCallback(() => {
-        if (!uiAudioContextRef.current) {
-            const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-            uiAudioContextRef.current = ctx;
-            const masterGain = ctx.createGain();
-            masterGain.gain.value = 0.7;
-            masterGain.connect(ctx.destination);
-            uiMasterGainRef.current = masterGain;
-        }
-        if (uiAudioContextRef.current.state === 'suspended') {
-            uiAudioContextRef.current.resume();
-        }
-        return uiAudioContextRef.current;
+    const playSound = useCallback((buffer: AudioBuffer | null, options: { loop?: boolean, onEnded?: () => void, gain?: number } = {}): AudioBufferSourceNode | null => {
+        const audioCtx = outputAudioContextRef.current;
+        if (!audioCtx || !buffer) return null;
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.loop = options.loop || false;
+        
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.value = options.gain ?? 1.0;
+
+        source.connect(gainNode).connect(audioCtx.destination);
+        source.start();
+        if (options.onEnded) source.onended = options.onEnded;
+        return source;
     }, []);
 
-    const playTones = useCallback((frequencies: number[], { duration = 200, gain = 0.5, type = 'sine' }: { duration?: number, gain?: number, type?: OscillatorType }) => {
-        const ctx = ensureUiAudioContext();
-        if (!ctx || !uiMasterGainRef.current) return;
-        const mainGain = ctx.createGain();
-        mainGain.connect(uiMasterGainRef.current);
-        const t0 = ctx.currentTime;
-        const tEnd = t0 + duration / 1000;
+    const playDtmfTone = useCallback((key: string) => {
+        const audioCtx = outputAudioContextRef.current;
+        if (!audioCtx || !DTMF[key]) return;
+        
+        const mainGain = audioCtx.createGain();
+        mainGain.connect(audioCtx.destination);
+        
+        const t0 = audioCtx.currentTime;
+        const tEnd = t0 + 0.18; // 180ms duration
         mainGain.gain.setValueAtTime(0, t0);
-        mainGain.gain.linearRampToValueAtTime(gain, t0 + 0.01);
-        mainGain.gain.setValueAtTime(gain, tEnd - 0.02);
+        mainGain.gain.linearRampToValueAtTime(0.3, t0 + 0.01);
+        mainGain.gain.setValueAtTime(0.3, tEnd - 0.02);
         mainGain.gain.linearRampToValueAtTime(0, tEnd);
-        frequencies.forEach(freq => {
-            const osc = ctx.createOscillator();
-            osc.type = type;
+        
+        DTMF[key].forEach(freq => {
+            const osc = audioCtx.createOscillator();
+            osc.type = 'sine';
             osc.frequency.value = freq;
             osc.connect(mainGain);
             osc.start(t0);
             osc.stop(tEnd + 0.01);
         });
-    }, [ensureUiAudioContext]);
+    }, []);
     
-    const playDtmfTone = useCallback((key: string) => { if (DTMF[key]) playTones(DTMF[key], { duration: 180, gain: 0.3 }) }, [playTones]);
-    
-    const stopRinging = useCallback(() => { if (ringToneRef.current && !ringToneRef.current.paused) { ringToneRef.current.pause(); ringToneRef.current.currentTime = 0; } }, []);
-    const startRinging = useCallback(() => { stopRinging(); ringToneRef.current?.play().catch(e => console.error("Ringtone failed to play:", e)); }, [stopRinging]);
-    const stopFailTone = useCallback(() => { if (failToneRef.current && !failToneRef.current.paused) { failToneRef.current.pause(); failToneRef.current.currentTime = 0; } }, []);
-    const playFailTone = useCallback(() => { stopFailTone(); failToneRef.current?.play().catch(e => console.error("Fail tone failed to play:", e)); }, [stopFailTone]);
+    const startRinging = useCallback(() => { stopAudioSource(ringToneSourceRef); ringToneSourceRef.current = playSound(ringToneBufferRef.current, { loop: true }); }, [playSound]);
+    const stopRinging = useCallback(() => { stopAudioSource(ringToneSourceRef); }, []);
+    const playFailTone = useCallback(() => { playSound(failToneBufferRef.current); }, [playSound]);
 
     const connectToAgent = useCallback(async (department: Department) => {
         if (!selectedAgent || !process.env.API_KEY) {
@@ -421,8 +438,10 @@ const CallHistoryPage: React.FC = () => {
                             const audioBuffer = await decodeAudioData(decode(base64Audio), outputCtx, 24000, 1);
                             const sourceNode = outputCtx.createBufferSource();
                             sourceNode.buffer = audioBuffer;
-                            sourceNode.connect(outputCtx.destination);
-                            if (outputAnalyserRef.current) sourceNode.connect(outputAnalyserRef.current);
+                            const destination = outputAnalyserRef.current ? outputAnalyserRef.current : outputCtx.destination;
+                            sourceNode.connect(destination);
+                            if (outputAnalyserRef.current) outputAnalyserRef.current.connect(outputCtx.destination);
+                            
                             sourceNode.addEventListener('ended', () => audioSourcesRef.current.delete(sourceNode));
                             sourceNode.start(nextStartTimeRef.current);
                             nextStartTimeRef.current += audioBuffer.duration;
@@ -483,11 +502,7 @@ const CallHistoryPage: React.FC = () => {
             const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
             if (base64Audio) {
                 const audioBuffer = await decodeAudioData(decode(base64Audio), audioCtx, 24000, 1);
-                const source = audioCtx.createBufferSource();
-                source.buffer = audioBuffer;
-                source.connect(audioCtx.destination);
-                source.start();
-                if (onEnded) source.onended = onEnded;
+                playSound(audioBuffer, { onEnded });
             } else {
                 throw new Error("TTS API returned no audio data.");
             }
@@ -496,7 +511,7 @@ const CallHistoryPage: React.FC = () => {
             addNotification('Failed to generate IVR audio prompt.', 'error');
             if (onEnded) onEnded();
         }
-    }, [selectedAgent, addNotification]);
+    }, [selectedAgent, addNotification, playSound]);
     
     const executeIvrState = useCallback((state: IvrState) => {
         if (callStatusRef.current !== 'connecting') return;
@@ -540,17 +555,40 @@ const CallHistoryPage: React.FC = () => {
         return () => { if (ivrTimeoutRef.current) clearTimeout(ivrTimeoutRef.current) };
     }, [ivrState, callStatus, executeIvrState]);
 
+    const loadSound = useCallback(async (url: string, audioCtx: AudioContext): Promise<AudioBuffer | null> => {
+        try {
+            const response = await fetch(url);
+            const arrayBuffer = await response.arrayBuffer();
+            return await audioCtx.decodeAudioData(arrayBuffer);
+        } catch (error) {
+            console.error(`Failed to load sound from ${url}`, error);
+            addNotification(`Failed to load critical sound: ${url.split('/').pop()}`, 'error');
+            return null;
+        }
+    }, [addNotification]);
+    
     const startCall = async () => {
         if (!selectedAgent || callStatus === 'connecting' || callStatus === 'connected') return;
-        resetSimulation(); // Reset state before starting a new call
+        resetSimulation();
         
-        // --- Key Change: Initialize audio context on user interaction ---
-        if (!outputAudioContextRef.current || outputAudioContextRef.current.state === 'closed') {
-            outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-        }
-        outputAudioContextRef.current.resume(); // Ensure it's active
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        await audioCtx.resume();
+        outputAudioContextRef.current = audioCtx;
 
-        ensureUiAudioContext();
+        if (!ringToneBufferRef.current) {
+            addNotification('Preparing sounds...', 'info');
+            const [ring, fail, hold, ambience] = await Promise.all([
+                loadSound(SOUND_SOURCES.RING_TONE, audioCtx),
+                loadSound(SOUND_SOURCES.FAIL_TONE, audioCtx),
+                loadSound(SOUND_SOURCES.HOLD_MUSIC, audioCtx),
+                loadSound(SOUND_SOURCES.BG_AMBIENCE, audioCtx),
+            ]);
+            ringToneBufferRef.current = ring;
+            failToneBufferRef.current = fail;
+            holdMusicBufferRef.current = hold;
+            bgAmbienceBufferRef.current = ambience;
+        }
+
         setCallStatus('connecting');
         setIvrState('ringing');
         startRinging();
@@ -565,21 +603,29 @@ const CallHistoryPage: React.FC = () => {
 
     const toggleHold = () => {
         setIsHolding(prev => {
-            const holdMusic = holdMusicRef.current;
-            if (!holdMusic) return !prev;
             const newIsHolding = !prev;
             if (newIsHolding) {
-                holdMusic.play().catch(e => console.error("Hold music failed to play", e));
+                holdMusicSourceRef.current = playSound(holdMusicBufferRef.current, { loop: true });
                 audioSourcesRef.current.forEach(source => source.stop());
                 audioSourcesRef.current.clear();
                 setIsMuted(true);
             } else {
-                if (!holdMusic.paused) { holdMusic.pause(); holdMusic.currentTime = 0; }
+                stopAudioSource(holdMusicSourceRef);
                 setIsMuted(false);
             }
             return newIsHolding;
         });
     };
+
+    useEffect(() => {
+        if (isBgSoundActive && callStatus === 'connected') {
+            stopAudioSource(bgAmbienceSourceRef);
+            bgAmbienceSourceRef.current = playSound(bgAmbienceBufferRef.current, { loop: true, gain: 0.08 });
+        } else {
+            stopAudioSource(bgAmbienceSourceRef);
+        }
+        return () => stopAudioSource(bgAmbienceSourceRef);
+    }, [isBgSoundActive, callStatus, playSound]);
     
     const resetSimulation = () => {
         endCall();
@@ -741,11 +787,6 @@ const CallHistoryPage: React.FC = () => {
                     </button>
                 )}
                  <div className="flex-1 flex items-center justify-center">
-                    <audio ref={holdMusicRef} loop preload="auto"><source src={SOUND_SOURCES.HOLD_MUSIC[0].src} type={SOUND_SOURCES.HOLD_MUSIC[0].type} /></audio>
-                    <audio ref={ringToneRef} loop preload="auto"><source src={SOUND_SOURCES.RING_TONE[0].src} type={SOUND_SOURCES.RING_TONE[0].type} /></audio>
-                    <audio ref={failToneRef} preload="auto"><source src={SOUND_SOURCES.FAIL_TONE[0].src} type={SOUND_SOURCES.FAIL_TONE[0].type} /></audio>
-                    <audio ref={bgAmbienceRef} loop preload="auto"><source src={SOUND_SOURCES.BG_AMBIENCE[0].src} type={SOUND_SOURCES.BG_AMBIENCE[0].type} /></audio>
-
                     <div className="w-full max-w-6xl h-[85vh] grid grid-cols-1 lg:grid-cols-2 gap-8">
                         <div className="flex items-center justify-center">
                              <div className="relative h-[700px] w-[340px] bg-black rounded-[2.5rem] border-[10px] border-black overflow-hidden shadow-2xl">
