@@ -3,13 +3,12 @@ import React from 'react';
 
 const SettingsPage: React.FC = () => {
 
-    const InputField: React.FC<{ label: string; value: string; isSecret?: boolean }> = ({ label, value, isSecret = false }) => (
+    const InputField: React.FC<{ label: string; placeholder: string; isSecret?: boolean }> = ({ label, placeholder, isSecret = false }) => (
         <div>
             <label className="block text-sm font-medium text-eburon-muted mb-1">{label}</label>
             <input 
                 type={isSecret ? "password" : "text"}
-                value={value}
-                readOnly
+                placeholder={placeholder}
                 className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none"
             />
         </div>
@@ -22,8 +21,21 @@ const SettingsPage: React.FC = () => {
                 <div className="bg-eburon-card border border-eburon-border rounded-xl p-6">
                     <h2 className="text-lg font-semibold mb-4">API Keys</h2>
                     <div className="space-y-4">
-                        <InputField label="Gemini API Key" value="••••••••••••••••••••••••••••••" isSecret />
-                        <InputField label="Telephony Provider Key" value="••••••••••••••••••••" isSecret />
+                        <InputField label="Gemini API Key" placeholder="Enter your Gemini API Key" isSecret />
+                        <InputField label="Telephony Provider Key" placeholder="Enter your Telephony Provider Key" isSecret />
+                    </div>
+                </div>
+                <div className="bg-eburon-card border border-eburon-border rounded-xl p-6">
+                    <h2 className="text-lg font-semibold mb-4">Supabase Credentials</h2>
+                    <p className="text-sm text-eburon-muted mb-4">Provide your Supabase project details to enable database and storage features.</p>
+                    <div className="space-y-4">
+                        <InputField label="Supabase Project URL" placeholder="https://your-project-ref.supabase.co" />
+                        <InputField label="Supabase Anon Key" placeholder="ey..." isSecret />
+                    </div>
+                    <div className="mt-6 flex justify-end">
+                        <button className="px-4 py-2 rounded-lg bg-brand-teal text-eburon-bg font-semibold hover:opacity-90">
+                            Save Credentials
+                        </button>
                     </div>
                 </div>
                 <div className="bg-eburon-card border border-eburon-border rounded-xl p-6">

@@ -1,15 +1,16 @@
+
 import React, { useState } from 'react';
 import { Plus, Play, Loader2 } from 'lucide-react';
 import { GoogleGenAI, Modality } from '@google/genai';
 import { decode, decodeAudioData } from '../services/audioUtils';
 
 const voices = [
-    { name: 'Natural Warm', style: 'Friendly, engaging', prebuilt: 'Kore' },
-    { name: 'Professional Male', style: 'Clear, authoritative', prebuilt: 'Puck' },
-    { name: 'Upbeat Female', style: 'Energetic, positive', prebuilt: 'Zephyr' },
-    { name: 'Calm Narrator', style: 'Soothing, narrative', prebuilt: 'Charon' },
-    { name: 'Friendly', style: 'A pleasant and approachable tone', prebuilt: 'Fenrir' },
-    { name: 'Elegant Female', style: 'A clear and sophisticated voice', prebuilt: 'Aoede' },
+    { name: 'Amber', style: 'Warm, organic, and inviting', prebuilt: 'Kore' },
+    { name: 'Onyx', style: 'Deep, clear, and authoritative', prebuilt: 'Puck' },
+    { name: 'Citrine', style: 'Bright, energetic, and positive', prebuilt: 'Zephyr' },
+    { name: 'Jade', style: 'Serene, smooth, and narrative', prebuilt: 'Charon' },
+    { name: 'Peridot', style: 'A pleasant and approachable tone', prebuilt: 'Fenrir' },
+    { name: 'Diamond', style: 'Clear, brilliant, and sophisticated', prebuilt: 'Aoede' },
 ];
 
 const VoicesPage: React.FC = () => {

@@ -13,6 +13,7 @@ import DeployPage from './pages/Deploy';
 import AgentBuilderPage from './pages/ImageGenerator'; // Repurposed for Agent Builder
 import SettingsPage from './pages/Settings';
 import CallHistoryPage from './pages/CallHistory'; // New Page
+import DatabasePage from './pages/Database'; // New Page
 import { Agent, View, AgentVersion, CallRecord, AgentTool } from './types';
 import { X } from 'lucide-react';
 
@@ -273,7 +274,7 @@ const initialAgents: Agent[] = [
         name: initialAgentName,
         status: 'Live',
         language: 'Multilingual',
-        voice: 'Natural Warm',
+        voice: 'Amber',
         voiceDescription: initialVoiceDescription,
         updatedAt: '2 hours ago',
         personaShortText: 'A friendly and helpful airline assistant for premium customers.',
@@ -289,7 +290,7 @@ const initialAgents: Agent[] = [
                 name: initialAgentName,
                 status: 'Live',
                 language: 'Multilingual',
-                voice: 'Natural Warm',
+                voice: 'Amber',
                 voiceDescription: initialVoiceDescription,
                 personaShortText: 'A friendly and helpful airline assistant for premium customers.',
                 persona: initialPersona,
@@ -303,7 +304,7 @@ const initialAgents: Agent[] = [
         name: 'Global Bank Bot',
         status: 'Draft',
         language: 'Multilingual',
-        voice: 'Professional Male',
+        voice: 'Onyx',
         voiceDescription: 'A clear, authoritative voice that inspires confidence. Pacing is measured and professional.',
         updatedAt: '1 day ago',
         personaShortText: 'A secure and knowledgeable banking assistant.',
@@ -401,7 +402,7 @@ const App: React.FC = () => {
             name: newAgentName,
             status: 'Draft',
             language: 'Multilingual',
-            voice: 'Natural Warm',
+            voice: 'Amber',
             voiceDescription: voiceDescription,
             updatedAt: 'Just now',
             personaShortText: `An AI assistant named ${newAgentName}.`,
@@ -440,6 +441,7 @@ const App: React.FC = () => {
             case 'AgentBuilder': return <AgentBuilderPage />;
             case 'Settings': return <SettingsPage />;
             case 'CallHistory': return <CallHistoryPage />;
+            case 'Database': return <DatabasePage />;
             default: return <HomePage />;
         }
     };

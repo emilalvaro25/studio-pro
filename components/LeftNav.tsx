@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Bot, Phone, Library, Voicemail, Send, Settings, History } from 'lucide-react';
+import { Home, Bot, Phone, Library, Voicemail, Send, Settings, History, Database } from 'lucide-react';
 import { useAppContext } from '../App';
 import { View } from '../types';
 
@@ -48,6 +48,7 @@ export const LeftNav: React.FC = () => {
             <NavItem icon={<Library size={20} />} label="Knowledge" viewName="Knowledge" count={3} />
             <NavItem icon={<Voicemail size={20} />} label="Voices" viewName="Voices" />
             <NavItem icon={<Send size={20} />} label="Deploy" viewName="Deploy" />
+            <NavItem icon={<Database size={20} />} label="Database" viewName="Database" />
             <div className="flex-grow"></div>
             <NavItem icon={<Settings size={20} />} label="Settings" viewName="Settings" />
         </nav>

@@ -8,12 +8,12 @@ import { Play, Loader2, Save, User, Brain, Voicemail, Library, TestTube, Phone, 
 import { Agent, AgentTool, IntroSpielType } from '../types';
 
 const voices = [
-    { name: 'Natural Warm', prebuilt: 'Kore', description: 'Friendly and engaging.' },
-    { name: 'Professional Male', prebuilt: 'Puck', description: 'Clear and authoritative.' },
-    { name: 'Upbeat Female', prebuilt: 'Zephyr', description: 'Energetic and positive.' },
-    { name: 'Calm Narrator', prebuilt: 'Charon', description: 'Soothing and narrative.' },
-    { name: 'Friendly', prebuilt: 'Fenrir', description: 'A pleasant and approachable tone.' },
-    { name: 'Elegant Female', prebuilt: 'Aoede', description: 'A clear and sophisticated voice.' },
+    { name: 'Amber', prebuilt: 'Kore', description: 'Warm, organic, and inviting.' },
+    { name: 'Onyx', prebuilt: 'Puck', description: 'Deep, clear, and authoritative.' },
+    { name: 'Citrine', prebuilt: 'Zephyr', description: 'Bright, energetic, and positive.' },
+    { name: 'Jade', prebuilt: 'Charon', description: 'Serene, smooth, and narrative.' },
+    { name: 'Peridot', prebuilt: 'Fenrir', description: 'A pleasant and approachable tone.' },
+    { name: 'Diamond', prebuilt: 'Aoede', description: 'Clear, brilliant, and sophisticated.' },
 ];
 
 const ALL_TOOLS: AgentTool[] = ['Knowledge', 'Webhook', 'Calendar', 'Payments'];

@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Phone, PhoneOff, Mic, MicOff, Volume2, User, Bot, Delete, Circle, Pause, Play as PlayIcon } from 'lucide-react';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob as GenAIBlob } from '@google/genai';
@@ -82,12 +83,12 @@ const drawVisualizer = (
 
 
 const VOICE_MAP: { [key: string]: string } = {
-    'Natural Warm': 'Kore',
-    'Professional Male': 'Puck',
-    'Upbeat Female': 'Zephyr',
-    'Calm Narrator': 'Charon',
-    'Friendly': 'Fenrir',
-    'Elegant Female': 'Aoede'
+    'Amber': 'Kore',
+    'Onyx': 'Puck',
+    'Citrine': 'Zephyr',
+    'Jade': 'Charon',
+    'Peridot': 'Fenrir',
+    'Diamond': 'Aoede'
 };
 
 type IvrState = 'idle' | 'ringing' | 'language_select' | 'main_menu' | 'routing' | 'connected_to_agent' | 'ended';
@@ -575,19 +576,19 @@ const CallsPage: React.FC = () => {
                             <div className="flex-1 flex flex-col justify-between">
                                 <div className="text-center pt-4">
                                     <h2 className="text-lg font-semibold text-eburon-text">
-                                        {callStatus === 'connected' ? `${selectedAgent?.name}` : 'Call Simulation'}
+                                        {selectedAgent?.name || 'Call Simulation'}
                                     </h2>
-                                    <p className="text-eburon-muted text-xs h-4">
-                                        {selectedAgent?.personaShortText}
-                                    </p>
+                                    <div className="text-xs h-4 mt-1">
+                                        {callStatus === 'idle' && <p className="text-eburon-muted">Ready to call</p>}
+                                        {callStatus === 'connecting' && <p className="text-warn animate-pulse">{ivrState}...</p>}
+                                        {callStatus === 'connected' && <p className="text-ok">Connected</p>}
+                                        {callStatus === 'ended' && <p className="text-danger">Call Ended</p>}
+                                    </div>
                                 </div>
                                 
                                 <div className="flex flex-col items-center space-y-4">
                                     <div className="text-center h-10">
                                          <p className="text-3xl font-light tracking-widest">{dialedNumber || 'Dial Pad'}</p>
-                                         {callStatus === 'connecting' && <p className="text-xs text-warn animate-pulse">{ivrState}...</p>}
-                                         {callStatus === 'connected' && <p className="text-xs text-ok">Connected</p>}
-                                         {callStatus === 'ended' && <p className="text-xs text-danger">Call Ended</p>}
                                     </div>
 
                                      <div className="grid grid-cols-3 gap-3">

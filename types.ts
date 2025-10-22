@@ -1,6 +1,6 @@
 import { Blob } from 'buffer';
 
-export type View = 'Home' | 'Agents' | 'Calls' | 'Knowledge' | 'Voices' | 'Deploy' | 'Settings' | 'AgentBuilder' | 'CallHistory';
+export type View = 'Home' | 'Agents' | 'Calls' | 'Knowledge' | 'Voices' | 'Deploy' | 'Settings' | 'AgentBuilder' | 'CallHistory' | 'Database';
 
 export type AgentStatus = 'Draft' | 'Ready' | 'Live';
 export type AgentTool = 'Knowledge' | 'Webhook' | 'Calendar' | 'Payments';
