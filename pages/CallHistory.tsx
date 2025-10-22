@@ -10,7 +10,7 @@ import {
     Delete, Circle, Pause, Play as PlayIcon, ArrowLeft, Search 
 } from 'lucide-react';
 
-// --- Constants and Helpers from former Calls.tsx ---
+// --- Constants and Helpers ---
 const formatDuration = (ms: number) => {
     const totalSeconds = Math.floor(ms / 1000);
     const minutes = Math.floor(totalSeconds / 60);
@@ -173,7 +173,7 @@ const CallHistoryPage: React.FC = () => {
     const [playbackTime, setPlaybackTime] = useState(0); // in ms
     const audioRef = useRef<HTMLAudioElement>(null);
 
-    // --- Simulation View State (from former Calls.tsx) ---
+    // --- Simulation View State ---
     const [callStatus, setCallStatus] = useState<'idle' | 'connecting' | 'connected' | 'ended'>('idle');
     const [ivrState, setIvrState] = useState<IvrState>('idle');
     const [isMuted, setIsMuted] = useState(false);
@@ -253,7 +253,7 @@ const CallHistoryPage: React.FC = () => {
         if (callStatusRef.current === 'idle' || callStatusRef.current === 'ended') return;
         setCallStatus('ended');
         setIvrState('ended');
-        clearTimeout(ivrTimeoutRef.current as number);
+        if(ivrTimeoutRef.current) clearTimeout(ivrTimeoutRef.current);
         if (ringToneRef.current) { ringToneRef.current.pause(); ringToneRef.current.currentTime = 0; }
         if (failToneRef.current) { failToneRef.current.pause(); failToneRef.current.currentTime = 0; }
         if (holdMusicRef.current) { holdMusicRef.current.pause(); holdMusicRef.current.currentTime = 0; }
@@ -311,7 +311,7 @@ const CallHistoryPage: React.FC = () => {
             const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
             uiAudioContextRef.current = ctx;
             const masterGain = ctx.createGain();
-            masterGain.gain.value = 0.7; // Master volume for UI sounds
+            masterGain.gain.value = 0.7;
             masterGain.connect(ctx.destination);
             uiMasterGainRef.current = masterGain;
         }
@@ -370,14 +370,16 @@ const CallHistoryPage: React.FC = () => {
             if (inputVisualizerRef.current && outputVisualizerRef.current) {
                 const inputCanvas = inputVisualizerRef.current, outputCanvas = outputVisualizerRef.current;
                 const inputCanvasCtx = inputCanvas.getContext('2d'), outputCanvasCtx = outputCanvas.getContext('2d');
-                inputAnalyserRef.current = inputCtx.createAnalyser(); inputAnalyserRef.current.fftSize = 256;
-                outputAnalyserRef.current = outputCtx.createAnalyser(); outputAnalyserRef.current.fftSize = 256;
-                const animate = () => {
-                    if (inputAnalyserRef.current && inputCanvasCtx) drawVisualizer(inputAnalyserRef.current, inputCanvasCtx, inputCanvas, '#fbbf24');
-                    if (outputAnalyserRef.current && outputCanvasCtx) drawVisualizer(outputAnalyserRef.current, outputCanvasCtx, outputCanvas, '#2dd4bf');
-                    animationFrameRef.current = requestAnimationFrame(animate);
-                };
-                animate();
+                if (inputCanvasCtx && outputCanvasCtx) {
+                    inputAnalyserRef.current = inputCtx.createAnalyser(); inputAnalyserRef.current.fftSize = 256;
+                    outputAnalyserRef.current = outputCtx.createAnalyser(); outputAnalyserRef.current.fftSize = 256;
+                    const animate = () => {
+                        if (inputAnalyserRef.current && inputCanvasCtx) drawVisualizer(inputAnalyserRef.current, inputCanvasCtx, inputCanvas, '#fbbf24');
+                        if (outputAnalyserRef.current && outputCanvasCtx) drawVisualizer(outputAnalyserRef.current, outputCanvasCtx, outputCanvas, '#2dd4bf');
+                        animationFrameRef.current = requestAnimationFrame(animate);
+                    };
+                    animate();
+                }
             }
 
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -397,7 +399,7 @@ const CallHistoryPage: React.FC = () => {
                             if (isMuted) return;
                             const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
                             const pcmBlob: GenAIBlob = {
-                                data: encode(new Int16Array(inputData.map(f => f * 32768)).buffer as any),
+                                data: encode(new Uint8Array(new Int16Array(inputData.map(f => f * 32768)).buffer)),
                                 mimeType: 'audio/pcm;rate=16000',
                             };
                             sessionPromise.then(session => session.sendRealtimeInput({ media: pcmBlob }));
@@ -488,7 +490,7 @@ const CallHistoryPage: React.FC = () => {
         if (config) {
             const promptText = typeof config.prompt === 'function' ? config.prompt(selectedAgent?.name || 'Customer Service') : config.prompt;
             playIvrPrompt(promptText, () => {
-               clearTimeout(ivrTimeoutRef.current as number);
+               if(ivrTimeoutRef.current) clearTimeout(ivrTimeoutRef.current);
                ivrTimeoutRef.current = window.setTimeout(() => {
                    playIvrPrompt("I'm sorry, I didn't get a response. Please call back later. Goodbye.", endCall);
                }, config.timeout);
@@ -500,7 +502,7 @@ const CallHistoryPage: React.FC = () => {
         if (ivrState !== 'language_select' && ivrState !== 'main_menu') return;
         playDtmfTone(key);
         setDialedNumber(prev => prev + key);
-        clearTimeout(ivrTimeoutRef.current as number);
+        if (ivrTimeoutRef.current) clearTimeout(ivrTimeoutRef.current);
         const config = IVR_CONFIG[ivrState];
         const result = config.handleKeyPress(key);
         if (result) {
@@ -521,11 +523,11 @@ const CallHistoryPage: React.FC = () => {
         if (callStatus === 'connecting' && (ivrState === 'language_select' || ivrState === 'main_menu')) {
             executeIvrState(ivrState);
         }
-        return () => clearTimeout(ivrTimeoutRef.current as number);
+        return () => { if (ivrTimeoutRef.current) clearTimeout(ivrTimeoutRef.current) };
     }, [ivrState, callStatus, executeIvrState]);
 
     const startCall = async () => {
-        if (!selectedAgent || callStatusRef.current === 'connecting' || callStatusRef.current === 'connected') return;
+        if (!selectedAgent || callStatus === 'connecting' || callStatus === 'connected') return;
         setDialedNumber('');
         setCallStatus('connecting');
         setIvrState('ringing');
@@ -584,7 +586,6 @@ const CallHistoryPage: React.FC = () => {
         setIsSimulating(false);
     };
 
-    // Effect to clean up a call if the user navigates away or stops simulation
     useEffect(() => {
         return () => {
             endCall();

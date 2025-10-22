@@ -562,6 +562,7 @@ const App: React.FC = () => {
                         startTime: Date.parse(rec.start_time),
                         endTime: Date.parse(rec.end_time),
                         duration: rec.duration_ms,
+                        recordingUrl: rec.recording_url,
                     })));
                 }
 
