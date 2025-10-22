@@ -6,7 +6,7 @@ import type { Agent, AgentStatus } from '../types';
 type Tab = 'Actions' | 'Properties' | 'Logs';
 
 export const RightPanel: React.FC = () => {
-  const { selectedAgent, agents, setAgents, setSelectedAgent, setIsQuickCreateOpen } = useAppContext();
+  const { selectedAgent, agents, setAgents, setSelectedAgent, setIsQuickCreateOpen, addNotification } = useAppContext();
   const [activeTab, setActiveTab] = useState<Tab>('Properties');
   
   if (!selectedAgent) {
@@ -28,6 +28,7 @@ export const RightPanel: React.FC = () => {
     };
     setAgents(prev => [clonedAgent, ...prev]);
     setSelectedAgent(clonedAgent);
+    addNotification(`Agent "${clonedAgent.name}" created from clone.`, 'success');
   };
 
   const handleMakeLive = () => {
@@ -35,12 +36,15 @@ export const RightPanel: React.FC = () => {
       const updatedAgent = { ...selectedAgent, status: 'Live' as AgentStatus };
       setAgents(prev => prev.map(a => a.id === selectedAgent.id ? updatedAgent : a));
       setSelectedAgent(updatedAgent);
+      addNotification(`Agent "${selectedAgent.name}" is now Live.`, 'success');
   };
 
   const handleDelete = () => {
       if (!selectedAgent) return;
+      const agentName = selectedAgent.name;
       setAgents(prev => prev.filter(a => a.id !== selectedAgent.id));
       setSelectedAgent(agents.length > 1 ? agents.find(a => a.id !== selectedAgent.id) || null : null);
+      addNotification(`Agent "${agentName}" has been deleted.`, 'success');
   };
 
   const renderQuickActions = () => (
@@ -80,7 +84,7 @@ export const RightPanel: React.FC = () => {
         </div>
          <div>
             <label className="block text-eburon-muted mb-1">Persona</label>
-            <p className="text-eburon-text leading-relaxed">{selectedAgent.persona}</p>
+            <p className="text-eburon-text leading-relaxed">{selectedAgent.personaShortText}</p>
         </div>
          <div>
             <label className="block text-eburon-muted mb-1">Tools</label>

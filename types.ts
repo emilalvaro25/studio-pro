@@ -45,6 +45,14 @@ export interface Agent {
   introSpiel: IntroSpiel;
 }
 
+export type NotificationType = 'success' | 'error' | 'info' | 'warn';
+
+export interface Notification {
+  id: number;
+  message: string;
+  type: NotificationType;
+}
+
 export interface TranscriptLine {
   speaker: 'You' | 'Agent' | 'System';
   text: string;

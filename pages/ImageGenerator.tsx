@@ -1,10 +1,8 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { decode, decodeAudioData } from '../services/audioUtils';
 import { useAppContext, createSystemPrompt } from '../App';
-import { Play, Loader2, Save, User, Brain, Voicemail, Library, TestTube, Phone, CheckSquare, Square, Volume2, X, History, Server } from 'lucide-react';
+import { Play, Loader2, Save, User, Brain, Voicemail, Library, TestTube, Phone, CheckSquare, Square, Volume2, X, History, Server, Copy, Check } from 'lucide-react';
 import { Agent, AgentTool, IntroSpielType } from '../types';
 
 const voices = [
@@ -63,9 +61,32 @@ const SystemPromptModal: React.FC<{ prompt: string; onSave: (newPrompt: string) 
     );
 };
 
+const CodeSnippet: React.FC<{ title: string; content: string; language: string; }> = ({ title, content, language }) => {
+    const { addNotification } = useAppContext();
+    const copyToClipboard = () => {
+        navigator.clipboard.writeText(content);
+        addNotification('Copied to clipboard!', 'success');
+    };
+
+    return (
+        <div className="bg-eburon-bg p-4 rounded-lg border border-eburon-border relative">
+            <div className="flex justify-between items-center mb-2">
+                <h4 className="text-sm font-semibold text-eburon-muted">{title}</h4>
+                <button onClick={copyToClipboard} className="text-eburon-muted hover:text-eburon-text flex items-center gap-1">
+                    <Copy size={16} />
+                    <span className="text-xs">Copy</span>
+                </button>
+            </div>
+            <pre className="text-xs text-brand-gold break-all bg-black/20 p-2 rounded-md overflow-x-auto">
+                <code className={`language-${language}`}>{content}</code>
+            </pre>
+        </div>
+    );
+};
+
 
 const AgentBuilderPage: React.FC = () => {
-    const { selectedAgent, setView, agents, setAgents, handleStartTest, setVersioningAgent } = useAppContext();
+    const { selectedAgent, setView, agents, setAgents, handleStartTest, setVersioningAgent, addNotification } = useAppContext();
     const [activeTab, setActiveTab] = useState<BuilderTab>('Identity');
     
     const [formData, setFormData] = useState<Agent | null>(null);
@@ -75,7 +96,6 @@ const AgentBuilderPage: React.FC = () => {
     const [bargeIn, setBargeIn] = useState(true);
     const [playingVoice, setPlayingVoice] = useState<string | null>(null);
     const [loadingVoice, setLoadingVoice] = useState<string | null>(null);
-    const [error, setError] = useState<string | null>(null);
     
     const [telephonyProvider, setTelephonyProvider] = useState<'Twilio' | 'Plivo' | null>('Twilio');
 
@@ -139,7 +159,7 @@ const AgentBuilderPage: React.FC = () => {
         if (!formData) return;
         const updatedAgents = agents.map(agent => agent.id === formData.id ? { ...formData, updatedAt: 'Just now' } : agent);
         setAgents(updatedAgents);
-        alert(`${formData.name} saved successfully!`);
+        addNotification(`${formData.name} saved successfully!`, 'success');
     };
 
     const handleSavePrompt = (newPrompt: string) => {
@@ -151,7 +171,6 @@ const AgentBuilderPage: React.FC = () => {
         if (loadingVoice || playingVoice || !formData) return;
     
         setLoadingVoice(voiceName);
-        setError(null);
 
         try {
             const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
@@ -196,7 +215,8 @@ const AgentBuilderPage: React.FC = () => {
             }
         } catch (e) {
             console.error("Voice preview error:", e);
-            setError(e instanceof Error ? e.message : "An unknown error occurred during preview.");
+            const errorMessage = e instanceof Error ? e.message : "An unknown error occurred during preview.";
+            addNotification(errorMessage, 'error');
         } finally {
             setLoadingVoice(null);
         }
@@ -335,8 +355,6 @@ const AgentBuilderPage: React.FC = () => {
             );
             case 'Voice': return (
                 <div className="space-y-6 max-w-lg">
-                    {error && <div className="text-danger text-sm bg-danger/10 border border-danger/20 p-3 rounded-lg">{error}</div>}
-                    
                      <div>
                         <label htmlFor="voiceDescription" className="block text-sm font-medium text-eburon-muted mb-2">Voice Description (Tone & Style)</label>
                         <textarea
@@ -488,12 +506,48 @@ const AgentBuilderPage: React.FC = () => {
                             </div>
                         </div>
                     )}
+                    <div className="pt-6 mt-6 border-t border-eburon-border space-y-4">
+                        <h3 className="text-lg font-semibold text-eburon-text">Deployment Instructions</h3>
+                        <p className="text-sm text-eburon-muted">
+                            To connect your live number, you need a backend service to handle the WebSocket connection.
+                            Use the code below in your provider's console.
+                        </p>
 
-                    <div className="pt-4 border-t border-eburon-border">
-                        <button className="flex items-center space-x-2 bg-brand-teal text-eburon-bg font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
-                            <Save size={16} />
-                            <span>Save Configuration</span>
-                        </button>
+                        {telephonyProvider === 'Twilio' && (
+                            <div>
+                                <CodeSnippet
+                                    title="Twilio: TwiML Bin Content"
+                                    language="xml"
+                                    content={`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say>Connecting you to the agent. Please wait a moment.</Say>
+    <Connect>
+        <Stream url="wss://your-backend-service.com/ws/${formData.id}" />
+    </Connect>
+</Response>`}
+                                />
+                                <p className="text-xs text-eburon-muted mt-2">
+                                    <strong>Note:</strong> Replace <code>wss://your-backend-service.com</code> with your actual backend's WebSocket URL. Your backend is responsible for handling the audio stream and call recording.
+                                </p>
+                            </div>
+                        )}
+
+                        {telephonyProvider === 'Plivo' && (
+                            <div>
+                                <CodeSnippet
+                                    title="Plivo: XML Application Content"
+                                    language="xml"
+                                    content={`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Speak>Connecting you to the agent. Please wait a moment.</Speak>
+    <Connect action="wss://your-backend-service.com/ws/${formData.id}" method="GET" />
+</Response>`}
+                                />
+                                <p className="text-xs text-eburon-muted mt-2">
+                                    <strong>Note:</strong> Replace <code>wss://your-backend-service.com</code> with your actual backend's WebSocket URL. Your backend is responsible for handling the audio stream and call recording.
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </div>
             );

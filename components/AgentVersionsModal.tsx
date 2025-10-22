@@ -58,7 +58,7 @@ const VersionComparer: React.FC<{ version1: AgentVersion; version2: AgentVersion
 
 
 const AgentVersionsModal: React.FC<AgentVersionsModalProps> = ({ data, onClose }) => {
-    const { saveAgentVersion, restoreAgentVersion } = useAppContext();
+    const { saveAgentVersion, restoreAgentVersion, addNotification } = useAppContext();
     const { agent, builderState } = data;
     const [description, setDescription] = useState('');
     
@@ -86,7 +86,7 @@ const AgentVersionsModal: React.FC<AgentVersionsModalProps> = ({ data, onClose }
 
     const handleSave = () => {
         if (!description.trim()) {
-            alert('Please provide a description for the new version.');
+            addNotification('Please provide a description for the new version.', 'warn');
             return;
         }
         saveAgentVersion(agent.id, description, currentState);

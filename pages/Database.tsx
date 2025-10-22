@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
+import { useAppContext } from '../App';
 
 const schemaContent = `-- Eburon CSR Studio Supabase Schema
 -- Version 1.0
@@ -115,12 +116,11 @@ CREATE POLICY "Allow public read access to KB links" ON agent_knowledge_links FO
 -- End of schema.`;
 
 const DatabasePage: React.FC = () => {
-    const [copied, setCopied] = useState(false);
+    const { addNotification } = useAppContext();
 
     const copyToClipboard = () => {
         navigator.clipboard.writeText(schemaContent.trim());
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        addNotification('Schema copied to clipboard', 'success');
     };
 
     return (
@@ -134,8 +134,8 @@ const DatabasePage: React.FC = () => {
                     onClick={copyToClipboard}
                     className="absolute top-3 right-3 flex items-center space-x-2 bg-eburon-border text-eburon-text font-semibold px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors z-10"
                 >
-                    {copied ? <Check size={16} className="text-ok" /> : <Copy size={16} />}
-                    <span>{copied ? 'Copied!' : 'Copy Schema'}</span>
+                    <Copy size={16} />
+                    <span>Copy Schema</span>
                 </button>
                 <pre className="h-full w-full overflow-auto p-4 font-mono text-sm text-eburon-text">
                     <code>

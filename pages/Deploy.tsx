@@ -3,7 +3,11 @@ import { Copy, TestTube2 } from 'lucide-react';
 import { useAppContext } from '../App';
 
 const SnippetCard: React.FC<{ title: string; content: string; }> = ({ title, content }) => {
-    const copyToClipboard = () => navigator.clipboard.writeText(content);
+    const { addNotification } = useAppContext();
+    const copyToClipboard = () => {
+        navigator.clipboard.writeText(content);
+        addNotification(`${title} copied to clipboard`, 'success');
+    };
     return (
         <div className="bg-eburon-bg p-4 rounded-lg border border-eburon-border">
             <div className="flex justify-between items-center mb-2">

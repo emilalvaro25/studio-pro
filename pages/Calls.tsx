@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Phone, PhoneOff, Mic, MicOff, Volume2, User, Bot, Delete, Circle, Pause, Play as PlayIcon } from 'lucide-react';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob as GenAIBlob } from '@google/genai';
@@ -121,7 +120,7 @@ const IVR_CONFIG = {
 };
 
 const CallsPage: React.FC = () => {
-    const { selectedAgent, addCallToHistory } = useAppContext();
+    const { selectedAgent, addCallToHistory, addNotification } = useAppContext();
     const [callStatus, setCallStatus] = useState<'idle' | 'connecting' | 'connected' | 'ended'>('idle');
     const [ivrState, setIvrState] = useState<IvrState>('idle');
     const [isMuted, setIsMuted] = useState(false);
@@ -313,6 +312,7 @@ const CallsPage: React.FC = () => {
 
     const connectToAgent = useCallback(async (department: Department) => {
         if (!selectedAgent || !process.env.API_KEY) {
+            addNotification('Agent not selected or API key is missing.', 'error');
             console.error("Agent or API_KEY not selected.");
             setCallStatus('ended');
             playFailTone();
@@ -420,12 +420,14 @@ const CallsPage: React.FC = () => {
             });
             sessionRef.current = await sessionPromise;
         } catch (error) {
+            const message = error instanceof Error ? error.message : 'An unknown error occurred.';
+            addNotification(`Failed to connect: ${message}`, 'error');
             console.error("Failed to start call:", error);
             addTranscript({ speaker: 'System', text: `Failed to connect. Please check permissions and configuration.` });
             setCallStatus('ended');
             playFailTone();
         }
-    }, [selectedAgent, addTranscript, isMuted, isRecording, playFailTone, endCall]);
+    }, [selectedAgent, addTranscript, isMuted, isRecording, playFailTone, endCall, addNotification]);
 
     
     useEffect(() => {
@@ -434,7 +436,10 @@ const CallsPage: React.FC = () => {
     }, []);
 
     const playIvrPrompt = useCallback(async (text: string, onEnded?: () => void) => {
-        if (!process.env.API_KEY || !selectedAgent) return;
+        if (!process.env.API_KEY || !selectedAgent) {
+            addNotification('Cannot play IVR prompt: API key or agent missing.', 'error');
+            return;
+        }
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const response = await ai.models.generateContent({
@@ -458,9 +463,10 @@ const CallsPage: React.FC = () => {
             }
         } catch (error) {
             console.error("IVR prompt failed:", error);
+            addNotification('Failed to generate IVR audio prompt.', 'error');
             if (onEnded) onEnded();
         }
-    }, [selectedAgent]);
+    }, [selectedAgent, addNotification]);
     
     const executeIvrState = useCallback((state: IvrState) => {
         if (callStatusRef.current !== 'connecting') return;

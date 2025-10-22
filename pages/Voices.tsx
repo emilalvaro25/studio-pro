@@ -1,8 +1,8 @@
-
 import React, { useState } from 'react';
 import { Plus, Play, Loader2 } from 'lucide-react';
 import { GoogleGenAI, Modality } from '@google/genai';
 import { decode, decodeAudioData } from '../services/audioUtils';
+import { useAppContext } from '../App';
 
 const voices = [
     { name: 'Amber', style: 'Warm, organic, and inviting', prebuilt: 'Kore' },
@@ -16,6 +16,7 @@ const voices = [
 const VoicesPage: React.FC = () => {
     const [playingVoice, setPlayingVoice] = useState<string | null>(null);
     const [loadingVoice, setLoadingVoice] = useState<string | null>(null);
+    const { addNotification } = useAppContext();
 
     const playPreview = async (voiceName: string, prebuiltVoice: string) => {
         if (loadingVoice || playingVoice) return;
@@ -24,8 +25,7 @@ const VoicesPage: React.FC = () => {
 
         try {
             if (!process.env.API_KEY) {
-                console.error("API_KEY not set.");
-                return;
+                throw new Error("API_KEY not set.");
             }
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const response = await ai.models.generateContent({
@@ -52,9 +52,13 @@ const VoicesPage: React.FC = () => {
                 source.start();
                 setPlayingVoice(voiceName);
                 source.onended = () => setPlayingVoice(null);
+            } else {
+                throw new Error("API did not return audio data.");
             }
         } catch (error) {
             console.error("Error generating speech:", error);
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            addNotification(`Failed to play voice preview: ${message}`, 'error');
         } finally {
             setLoadingVoice(null);
         }

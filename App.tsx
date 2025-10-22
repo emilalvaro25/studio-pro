@@ -1,5 +1,4 @@
-
-import React, { useState, createContext, useContext, useEffect } from 'react';
+import React, { useState, createContext, useContext, useEffect, useCallback } from 'react';
 import { Header } from './components/Header';
 import { LeftNav } from './components/LeftNav';
 import { RightPanel } from './components/RightPanel';
@@ -14,8 +13,55 @@ import AgentBuilderPage from './pages/ImageGenerator'; // Repurposed for Agent B
 import SettingsPage from './pages/Settings';
 import CallHistoryPage from './pages/CallHistory'; // New Page
 import DatabasePage from './pages/Database'; // New Page
-import { Agent, View, AgentVersion, CallRecord, AgentTool } from './types';
-import { X } from 'lucide-react';
+import { Agent, View, AgentVersion, CallRecord, Notification, NotificationType } from './types';
+import { X, CheckCircle, XCircle, Info, AlertTriangle } from 'lucide-react';
+
+// --- Notification Component ---
+const ICONS: { [key in NotificationType]: React.ReactNode } = {
+    success: <CheckCircle className="text-ok" size={20} />,
+    error: <XCircle className="text-danger" size={20} />,
+    info: <Info className="text-brand-teal" size={20} />,
+    warn: <AlertTriangle className="text-warn" size={20} />,
+};
+
+const BORDER_COLORS: { [key in NotificationType]: string } = {
+    success: 'border-ok/30',
+    error: 'border-danger/30',
+    info: 'border-brand-teal/30',
+    warn: 'border-warn/30',
+};
+
+const NotificationContainer: React.FC = () => {
+    const { notifications, removeNotification } = useAppContext();
+
+    if (notifications.length === 0) {
+        return null;
+    }
+
+    return (
+        <div className="fixed top-20 right-6 z-[100] w-full max-w-sm space-y-3">
+            {notifications.map((notification) => (
+                <div
+                    key={notification.id}
+                    className={`bg-eburon-card border ${BORDER_COLORS[notification.type]} rounded-lg shadow-lg p-4 flex items-start space-x-3`}
+                >
+                    <div className="flex-shrink-0">{ICONS[notification.type]}</div>
+                    <div className="flex-1">
+                        <p className="text-sm font-medium text-eburon-text">{notification.message}</p>
+                    </div>
+                    <button
+                        onClick={() => removeNotification(notification.id)}
+                        className="text-eburon-muted hover:text-eburon-text"
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+            ))}
+        </div>
+    );
+};
+// --- End Notification Component ---
+
 
 interface AppContextType {
   view: View;
@@ -33,6 +79,9 @@ interface AppContextType {
   restoreAgentVersion: (agentId: string, versionId: string) => void;
   callHistory: CallRecord[];
   addCallToHistory: (call: CallRecord) => void;
+  notifications: Notification[];
+  addNotification: (message: string, type?: NotificationType) => void;
+  removeNotification: (id: number) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -315,7 +364,6 @@ const initialAgents: Agent[] = [
     },
 ];
 
-// FIX: Implement and export the main App component as the default export.
 const App: React.FC = () => {
     const [view, setView] = useState<View>('Home');
     const [selectedAgent, setSelectedAgent] = useState<Agent | null>(initialAgents[0] || null);
@@ -324,6 +372,20 @@ const App: React.FC = () => {
     const [versioningAgent, setVersioningAgent] = useState<{ agent: Agent; builderState?: Agent; } | null>(null);
     const [callHistory, setCallHistory] = useState<CallRecord[]>([]);
     const [newAgentName, setNewAgentName] = useState('');
+    const [notifications, setNotifications] = useState<Notification[]>([]);
+    
+    const removeNotification = useCallback((id: number) => {
+        setNotifications(prev => prev.filter(n => n.id !== id));
+    }, []);
+
+    const addNotification = useCallback((message: string, type: NotificationType = 'info') => {
+        const id = Date.now();
+        setNotifications(prev => [...prev, { id, message, type }]);
+        setTimeout(() => {
+            removeNotification(id);
+        }, 5000); // Auto-dismiss after 5 seconds
+    }, [removeNotification]);
+
 
     useEffect(() => {
         if (!selectedAgent && agents.length > 0) {
@@ -359,11 +421,14 @@ const App: React.FC = () => {
             }
             return agent;
         }));
+        addNotification(`Version "${description}" saved for ${stateToSave.name}.`, 'success');
     };
     
     const restoreAgentVersion = (agentId: string, versionId: string) => {
+        let agentName = '';
         setAgents(prev => prev.map(agent => {
             if (agent.id === agentId) {
+                agentName = agent.name;
                 const versionToRestore = agent.history.find(v => v.id === versionId);
                 if (versionToRestore) {
                     return {
@@ -383,6 +448,9 @@ const App: React.FC = () => {
             }
             return agent;
         }));
+        if(agentName) {
+            addNotification(`Restored version for "${agentName}".`, 'success');
+        }
         // After restoring, we might want to refresh the selected agent's view if it's the one being edited
         setView('Agents');
         setTimeout(() => setView('AgentBuilder'), 0);
@@ -395,28 +463,34 @@ const App: React.FC = () => {
     const handleCreateAgent = (e: React.FormEvent) => {
         e.preventDefault();
         if (!newAgentName.trim()) return;
-
-        const voiceDescription = "A standard, neutral voice.";
-        const newAgent: Agent = {
-            id: String(Date.now()),
-            name: newAgentName,
-            status: 'Draft',
-            language: 'Multilingual',
-            voice: 'Amber',
-            voiceDescription: voiceDescription,
-            updatedAt: 'Just now',
-            personaShortText: `An AI assistant named ${newAgentName}.`,
-            persona: createSystemPrompt(newAgentName, "the company", voiceDescription),
-            tools: [],
-            history: [],
-            introSpiel: { type: 'Concise' },
-        };
-
-        setAgents(prev => [newAgent, ...prev]);
-        setSelectedAgent(newAgent);
-        setNewAgentName('');
-        setIsQuickCreateOpen(false);
-        setView('AgentBuilder');
+        
+        try {
+            const voiceDescription = "A standard, neutral voice.";
+            const newAgent: Agent = {
+                id: String(Date.now()),
+                name: newAgentName,
+                status: 'Draft',
+                language: 'Multilingual',
+                voice: 'Amber',
+                voiceDescription: voiceDescription,
+                updatedAt: 'Just now',
+                personaShortText: `An AI assistant named ${newAgentName}.`,
+                persona: getDepartmentalPrompt('General', newAgentName, "the company", voiceDescription),
+                tools: [],
+                history: [],
+                introSpiel: { type: 'Concise' },
+            };
+    
+            setAgents(prev => [newAgent, ...prev]);
+            setSelectedAgent(newAgent);
+            setNewAgentName('');
+            setIsQuickCreateOpen(false);
+            setView('AgentBuilder');
+            addNotification(`Agent "${newAgent.name}" created successfully.`, 'success');
+        } catch (error) {
+            console.error("Failed to create agent:", error);
+            addNotification("Failed to create agent. See console for details.", 'error');
+        }
     };
 
     const contextValue: AppContextType = {
@@ -428,6 +502,7 @@ const App: React.FC = () => {
         versioningAgent, setVersioningAgent,
         saveAgentVersion, restoreAgentVersion,
         callHistory, addCallToHistory,
+        notifications, addNotification, removeNotification,
     };
 
     const renderView = () => {
@@ -484,6 +559,7 @@ const App: React.FC = () => {
                     </div>
                 </div>
             )}
+            <NotificationContainer />
         </AppContext.Provider>
     );
 };

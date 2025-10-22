@@ -1,6 +1,6 @@
-
 import React, { useState, Fragment } from 'react';
 import { Plus, Upload, MoreVertical, RefreshCw, Trash2, Search, X, Loader2, UploadCloud } from 'lucide-react';
+import { useAppContext } from '../App';
 
 interface KnowledgeBase {
     id: number;
@@ -112,6 +112,7 @@ const KnowledgePage: React.FC = () => {
     const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>(initialKnowledgeBases);
     const [selectedKb, setSelectedKb] = useState<KnowledgeBase | null>(null);
     const [isDragging, setIsDragging] = useState(false);
+    const { addNotification } = useAppContext();
 
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
@@ -138,6 +139,7 @@ const KnowledgePage: React.FC = () => {
         const files = e.dataTransfer.files;
         if (files && files.length > 0) {
             const file = files[0];
+            addNotification(`Uploading "${file.name}"...`, 'info');
             const newKb: KnowledgeBase = {
                 id: Date.now(),
                 source: file.name,
@@ -154,6 +156,7 @@ const KnowledgePage: React.FC = () => {
                     ? { ...kb, status: 'Indexed', chunks: Math.floor(Math.random() * 200) + 50 } 
                     : kb
                 ));
+                 addNotification(`"${newKb.source}" has been successfully indexed.`, 'success');
             }, 3000);
         }
     };
