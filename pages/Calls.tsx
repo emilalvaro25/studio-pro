@@ -9,11 +9,11 @@ import { useAppContext } from '../App';
 import { getDepartmentalPrompt, Department } from '../App';
 
 // Sound effect URLs from highly reliable public domain sources to prevent loading errors.
-const BACKGROUND_AMBIENCE_URL = "https://cdn.pixabay.com/download/audio/2022/04/24/audio_398a6d4b2b.mp3";
-const HOLD_MUSIC_URL = "https://cdn.pixabay.com/download/audio/2022/05/23/audio_7313a17531.mp3";
-const KEYPAD_TONE_URL = "https://www.soundjay.com/phone/sounds/phone-touch-tone-1.mp3";
-const RINGING_TONE_URL = "https://www.soundjay.com/phone/sounds/telephone-ring-01a.wav";
-const FAIL_TONE_URL = "https://www.soundjay.com/phone/sounds/phone-busy-signal-1.mp3";
+const BACKGROUND_AMBIENCE_URL = "https://upload.wikimedia.org/wikipedia/commons/5/5b/Office-ambience.ogg";
+const HOLD_MUSIC_URL = "https://upload.wikimedia.org/wikipedia/commons/e/e8/The_Lounge.ogg";
+const KEYPAD_TONE_URL = "https://archive.org/download/50_Sound_Effects_Super_Set/50_Sound_Effects_Super_Set-24-Touch_Tone_Phone.mp3";
+const RINGING_TONE_URL = "https://upload.wikimedia.org/wikipedia/commons/8/82/Telephone-ring-US.ogg";
+const FAIL_TONE_URL = "https://upload.wikimedia.org/wikipedia/commons/3/32/US_busy_signal.ogg";
 
 
 const DialerButton: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void, 'data-id'?: string; disabled?: boolean }> = ({ children, className, onClick, 'data-id': dataId, disabled }) => (
