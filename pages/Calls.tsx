@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Phone, Mic, MicOff, Volume2, User, Bot, Delete } from 'lucide-react';
-import { GoogleGenAI, LiveSession, LiveServerMessage, Modality, Blob } from '@google/genai';
+import { Phone, PhoneOff, Mic, MicOff, Volume2, User, Bot, Delete, Circle } from 'lucide-react';
+// FIX: Remove deprecated 'LiveSession' and alias 'Blob' to 'GenAIBlob' to avoid naming conflicts with the native Blob type.
+import { GoogleGenAI, LiveServerMessage, Modality, Blob as GenAIBlob } from '@google/genai';
 import { decode, encode, decodeAudioData } from '../services/audioUtils';
 import { TranscriptLine } from '../types';
 import { useAppContext } from '../App';
 
-const DialerButton: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void }> = ({ children, className, onClick }) => (
-    <button onClick={onClick} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${className}`}>
+const DialerButton: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void, 'data-id'?: string }> = ({ children, className, onClick, 'data-id': dataId }) => (
+    <button onClick={onClick} data-id={dataId} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${className}`}>
         {children}
     </button>
 );
@@ -81,8 +82,11 @@ const CallsPage: React.FC = () => {
     const [isMuted, setIsMuted] = useState(false);
     const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
     const [dialedNumber, setDialedNumber] = useState('');
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
     
-    const sessionRef = useRef<LiveSession | null>(null);
+    // FIX: The LiveSession type is not exported from @google/genai. Use 'any' for the session object.
+    const sessionRef = useRef<any | null>(null);
     const inputAudioContextRef = useRef<AudioContext | null>(null);
     const outputAudioContextRef = useRef<AudioContext | null>(null);
     const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -90,12 +94,15 @@ const CallsPage: React.FC = () => {
     const nextStartTimeRef = useRef<number>(0);
     const audioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
     const transcriptRef = useRef(transcript);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const recordedChunksRef = useRef<Blob[]>([]);
 
     const inputVisualizerRef = useRef<HTMLCanvasElement>(null);
     const outputVisualizerRef = useRef<HTMLCanvasElement>(null);
     const inputAnalyserRef = useRef<AnalyserNode | null>(null);
     const outputAnalyserRef = useRef<AnalyserNode | null>(null);
-    const animationFrameRef = useRef<number>();
+    // FIX: Initialize useRef with a value. useRef<number>() is invalid; it should be useRef<number | null>(null)
+    const animationFrameRef = useRef<number | null>(null);
 
     useEffect(() => {
         transcriptRef.current = transcript;
@@ -135,6 +142,12 @@ const CallsPage: React.FC = () => {
     const handleConnect = useCallback(async () => {
         if ((callStatus !== 'idle' && callStatus !== 'ended') || !selectedAgent) return;
 
+        if (recordedAudioUrl) {
+            URL.revokeObjectURL(recordedAudioUrl);
+            setRecordedAudioUrl(null);
+        }
+        recordedChunksRef.current = [];
+
         setCallStatus('connecting');
         setTranscript([]);
         addTranscriptLine('System', 'Connecting...');
@@ -142,6 +155,19 @@ const CallsPage: React.FC = () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaStreamRef.current = stream;
+
+            if (isRecording && mediaStreamRef.current) {
+                mediaRecorderRef.current = new MediaRecorder(mediaStreamRef.current, { mimeType: 'audio/webm' });
+                mediaRecorderRef.current.ondataavailable = (event) => {
+                    if (event.data.size > 0) recordedChunksRef.current.push(event.data);
+                };
+                mediaRecorderRef.current.onstop = () => {
+                    const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
+                    const url = URL.createObjectURL(blob);
+                    setRecordedAudioUrl(url);
+                };
+                mediaRecorderRef.current.start();
+            }
 
             if (!process.env.API_KEY) {
               addTranscriptLine('System', 'API_KEY environment variable not set.');
@@ -174,7 +200,8 @@ const CallsPage: React.FC = () => {
                         scriptProcessorRef.current.onaudioprocess = (audioProcessingEvent) => {
                             if (isMuted) return;
                             const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-                            const pcmBlob: Blob = {
+                            // FIX: Use the aliased GenAIBlob type.
+                            const pcmBlob: GenAIBlob = {
                                 data: encode(new Uint8Array(new Int16Array(inputData.map(x => x * 32768)).buffer)),
                                 mimeType: 'audio/pcm;rate=16000',
                             };
@@ -209,7 +236,8 @@ const CallsPage: React.FC = () => {
 
                         let updated = false;
                         const currentTranscript = transcriptRef.current;
-                        const process = (transcription: { text: string } | undefined, speaker: 'You' | 'Agent') => {
+                        // FIX: The 'text' property from inputTranscription and outputTranscription is optional.
+                        const process = (transcription: { text?: string } | undefined, speaker: 'You' | 'Agent') => {
                             if (transcription?.text) {
                                 const last = currentTranscript[currentTranscript.length - 1];
                                 if (last?.speaker === speaker) last.text += transcription.text;
@@ -245,9 +273,14 @@ const CallsPage: React.FC = () => {
             setCallStatus('ended');
             stopVisualizers();
         }
-    }, [callStatus, isMuted, startVisualizers, stopVisualizers, selectedAgent]);
+    }, [callStatus, isMuted, startVisualizers, stopVisualizers, selectedAgent, isRecording, recordedAudioUrl]);
 
     const handleEndCall = useCallback(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop();
+        }
+        mediaRecorderRef.current = null;
+
         sessionRef.current?.close();
         sessionRef.current = null;
         
@@ -266,8 +299,10 @@ const CallsPage: React.FC = () => {
     }, [stopVisualizers]);
     
     useEffect(() => {
+      const url = recordedAudioUrl;
       return () => {
         handleEndCall();
+        if (url) URL.revokeObjectURL(url);
       }
     }, [handleEndCall]);
 
@@ -287,7 +322,31 @@ const CallsPage: React.FC = () => {
 
     return (
         <div className="p-6 flex flex-col h-full">
-            <h1 className="text-xl font-semibold text-eburon-text mb-4">Live Call Test: <span className="text-brand-teal font-bold">{selectedAgent.name}</span></h1>
+            <div className="flex justify-between items-center mb-4">
+                <h1 className="text-xl font-semibold text-eburon-text">Live Call Test: <span className="text-brand-teal font-bold">{selectedAgent.name}</span></h1>
+                <div className="flex items-center">
+                    {(callStatus === 'idle' || callStatus === 'ended') ? (
+                        <label htmlFor="record-toggle" className="flex items-center space-x-2 cursor-pointer">
+                            <input
+                                id="record-toggle"
+                                type="checkbox"
+                                className="sr-only peer"
+                                checked={isRecording}
+                                onChange={() => setIsRecording(prev => !prev)}
+                            />
+                             <div className="relative w-9 h-5 bg-eburon-bg rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-danger"></div>
+                            <span className="text-sm font-medium text-eburon-muted">Record</span>
+                        </label>
+                    ) : (
+                        isRecording && (
+                            <div className="flex items-center space-x-2 text-danger animate-pulse">
+                                <Circle size={10} className="text-danger fill-current" />
+                                <span className="text-sm font-medium">Recording</span>
+                            </div>
+                        )
+                    )}
+                 </div>
+            </div>
             <div className="flex-1 bg-eburon-card border border-eburon-border rounded-xl p-4 flex flex-col space-y-4 overflow-hidden">
                 <div className="flex-shrink-0 p-4">
                      <div className="h-10 text-center text-3xl font-light tracking-wider text-eburon-text">{dialedNumber || ' '}</div>
@@ -312,34 +371,48 @@ const CallsPage: React.FC = () => {
                         <DialerButton className="bg-eburon-muted/10" onClick={handleDelete}><Delete size={32}/></DialerButton>
                     </div>
                 )}
-                
-                 <div className="flex-shrink-0 flex justify-around items-center w-full p-4 border-t border-eburon-border">
-                    <div className="text-center w-40">
-                        <canvas ref={inputVisualizerRef} width="150" height="40" />
-                        <p className="text-xs text-eburon-muted mt-1">Your Input</p>
-                    </div>
-                    
-                    <div className="flex justify-center items-center space-x-6">
-                        <DialerButton className="bg-eburon-muted/20 text-eburon-muted"><Volume2 size={32}/></DialerButton>
-                        {callStatus === 'idle' || callStatus === 'ended' ? (
-                            <DialerButton className="bg-ok/80 hover:bg-ok text-white" onClick={handleConnect}>
-                                <Phone size={32}/>
-                            </DialerButton>
-                        ) : (
-                            <DialerButton className="bg-danger/80 hover:bg-danger text-white" onClick={handleEndCall}>
-                                <Phone size={32}/>
-                            </DialerButton>
-                        )}
-                        <DialerButton className={`transition-colors ${isMuted ? 'bg-red-500/20 text-red-400' : 'bg-eburon-muted/20 text-eburon-muted'}`} onClick={toggleMute}>
-                            {isMuted ? <MicOff size={32}/> : <Mic size={32}/>}
-                        </DialerButton>
-                    </div>
 
-                    <div className="text-center w-40">
-                        <canvas ref={outputVisualizerRef} width="150" height="40" />
-                        <p className="text-xs text-eburon-muted mt-1">Agent Output</p>
+                {recordedAudioUrl && (
+                    <div className="text-center p-2 flex-shrink-0">
+                        <a 
+                            href={recordedAudioUrl} 
+                            download={`Eburon-recording-${selectedAgent.name.replace(/\s+/g, '_')}-${Date.now()}.webm`}
+                            className="text-brand-teal hover:underline text-sm font-medium"
+                        >
+                            Download Call Recording
+                        </a>
                     </div>
-                </div>
+                )}
+                
+                 <div className="flex-shrink-0 flex flex-col items-center w-full p-4 border-t border-eburon-border">
+                    <div className="flex justify-around items-center w-full">
+                        <div className="text-center w-40">
+                            <canvas ref={inputVisualizerRef} width="150" height="40" />
+                            <p className="text-xs text-eburon-muted mt-1">Your Input</p>
+                        </div>
+                        
+                        <div className="flex justify-center items-center space-x-6">
+                            <DialerButton className="bg-eburon-muted/20 text-eburon-muted"><Volume2 size={32}/></DialerButton>
+                            {callStatus === 'idle' || callStatus === 'ended' ? (
+                                <DialerButton data-id="dialer-call" className="bg-ok/80 hover:bg-ok text-white" onClick={handleConnect}>
+                                    <Phone size={32}/>
+                                </DialerButton>
+                            ) : (
+                                <DialerButton data-id="dialer-end" className="bg-danger/80 hover:bg-danger text-white" onClick={handleEndCall}>
+                                    <PhoneOff size={32}/>
+                                </DialerButton>
+                            )}
+                            <DialerButton className={`transition-colors ${isMuted ? 'bg-red-500/20 text-red-400' : 'bg-eburon-muted/20 text-eburon-muted'}`} onClick={toggleMute}>
+                                {isMuted ? <MicOff size={32}/> : <Mic size={32}/>}
+                            </DialerButton>
+                        </div>
+
+                        <div className="text-center w-40">
+                            <canvas ref={outputVisualizerRef} width="150" height="40" />
+                            <p className="text-xs text-eburon-muted mt-1">Agent Output</p>
+                        </div>
+                    </div>
+                 </div>
             </div>
         </div>
     );
