@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Bot, Phone, Library, Voicemail, Send, Settings } from 'lucide-react';
+import { Home, Bot, Phone, Library, Voicemail, Send, Settings, History } from 'lucide-react';
 import { useAppContext } from '../App';
 import { View } from '../types';
 
@@ -17,7 +17,7 @@ const NavItem: React.FC<NavItemProps> = ({ icon, label, viewName, count, hasActi
 
   return (
     <button
-      data-id={`nav-${label.toLowerCase()}`}
+      data-id={`nav-${label.toLowerCase().replace(' ', '-')}`}
       onClick={() => setView(viewName)}
       className={`flex items-center w-full h-10 px-3 rounded-lg text-left transition-colors ${
         isActive
@@ -38,12 +38,13 @@ const NavItem: React.FC<NavItemProps> = ({ icon, label, viewName, count, hasActi
 };
 
 export const LeftNav: React.FC = () => {
-    const { agents } = useAppContext();
+    const { agents, callHistory } = useAppContext();
     return (
         <nav className="w-72 bg-eburon-card border-r border-eburon-border p-4 flex flex-col space-y-2">
             <NavItem icon={<Home size={20} />} label="Home" viewName="Home" />
             <NavItem icon={<Bot size={20} />} label="Agents" viewName="Agents" count={agents.length} />
             <NavItem icon={<Phone size={20} />} label="Calls" viewName="Calls" hasActivity />
+            <NavItem icon={<History size={20} />} label="Call History" viewName="CallHistory" count={callHistory.length} />
             <NavItem icon={<Library size={20} />} label="Knowledge" viewName="Knowledge" count={3} />
             <NavItem icon={<Voicemail size={20} />} label="Voices" viewName="Voices" />
             <NavItem icon={<Send size={20} />} label="Deploy" viewName="Deploy" />

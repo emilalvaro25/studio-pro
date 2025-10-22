@@ -1,4 +1,6 @@
-export type View = 'Home' | 'Agents' | 'Calls' | 'Knowledge' | 'Voices' | 'Deploy' | 'Settings' | 'AgentBuilder';
+import { Blob } from 'buffer';
+
+export type View = 'Home' | 'Agents' | 'Calls' | 'Knowledge' | 'Voices' | 'Deploy' | 'Settings' | 'AgentBuilder' | 'CallHistory';
 
 export type AgentStatus = 'Draft' | 'Ready' | 'Live';
 export type AgentTool = 'Knowledge' | 'Webhook' | 'Calendar' | 'Payments';
@@ -36,4 +38,15 @@ export interface TranscriptLine {
   speaker: 'You' | 'Agent' | 'System';
   text: string;
   timestamp: number;
+}
+
+export interface CallRecord {
+  id: string;
+  agentId: string;
+  agentName: string;
+  startTime: number;
+  endTime: number;
+  duration: number; // in milliseconds
+  transcript: TranscriptLine[];
+  recordingUrl: string;
 }

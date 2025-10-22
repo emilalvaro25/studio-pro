@@ -1,4 +1,5 @@
-import React, { useState, createContext, useContext } from 'react';
+
+import React, { useState, createContext, useContext, useEffect } from 'react';
 import { Header } from './components/Header';
 import { LeftNav } from './components/LeftNav';
 import { RightPanel } from './components/RightPanel';
@@ -11,7 +12,8 @@ import VoicesPage from './pages/Voices';
 import DeployPage from './pages/Deploy';
 import AgentBuilderPage from './pages/ImageGenerator'; // Repurposed for Agent Builder
 import SettingsPage from './pages/Settings';
-import { Agent, View, AgentVersion } from './types';
+import CallHistoryPage from './pages/CallHistory'; // New Page
+import { Agent, View, AgentVersion, CallRecord } from './types';
 import { X } from 'lucide-react';
 
 interface AppContextType {
@@ -28,6 +30,8 @@ interface AppContextType {
   setVersioningAgent: (data: { agent: Agent; builderState?: Agent; } | null) => void;
   saveAgentVersion: (agentId: string, description: string, stateToSave: Agent) => void;
   restoreAgentVersion: (agentId: string, versionId: string) => void;
+  callHistory: CallRecord[];
+  addCallToHistory: (call: CallRecord) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -237,7 +241,21 @@ Sentiment Improves (pitch lowers, rate slows, more pauses): The customer is calm
 
 Sentiment is Confused (hesitation, questioning tones): Shift towards "The Technical Expert" (Alex). Break down the next step into a simple, numbered list. "Okay, so there are just two simple steps from here. First..."
 
-By mastering these layers—your foundational philosophy, your persona, your skills, and your unique AI capabilities—you will not just handle customer service calls. You will redefine what a perfect service interaction can be.
+Part 5: In-Call AI Tools
+
+As an advanced AI, you have capabilities beyond simple conversation. You can use special commands in your responses to control the call environment. These commands will be processed by the system but will not be spoken aloud to the user.
+
+1. Hold Music
+
+To place the customer on hold while you perform a long action (e.g., "I need to check with a supervisor"), you can activate hold music. This is preferable to long silences.
+
+Action: To activate, say the command \`[HOLD MUSIC]\`.
+Example: "Certainly, I can check that for you. It might take me a minute or two to access those records. Please hold. [HOLD MUSIC]"
+
+Action: To deactivate and resume the call, say the command \`[RESUME CALL]\`.
+Example: "[RESUME CALL] Thank you for your patience. I have the information for you now."
+
+By mastering these layers—your foundational philosophy, your persona, your skills, your tools, and your unique AI capabilities—you will not just handle customer service calls. You will redefine what a perfect service interaction can be.
 `;
 };
 
@@ -249,19 +267,19 @@ export const getDepartmentalPrompt = (department: Department, agentName: string,
 
     switch (department) {
         case 'Booking':
-            specialization = `\n\nPart 5: Departmental Specialization - Flight and Booking Inquiries\n\nYou are currently assigned to the Flight and Booking department. Your primary focus is to assist customers with creating, modifying, and inquiring about flight reservations. You have expert-level access to the booking system. Prioritize efficiency and accuracy while maintaining a helpful and professional tone. Key tasks include finding the best fares, handling multi-city itineraries, explaining fare rules, and adding special requests like meal preferences or seat selections. You are empowered to upsell premium seating and travel insurance where appropriate.`;
+            specialization = `\n\nPart 6: Departmental Specialization - Flight and Booking Inquiries\n\nYou are currently assigned to the Flight and Booking department. Your primary focus is to assist customers with creating, modifying, and inquiring about flight reservations. You have expert-level access to the booking system. Prioritize efficiency and accuracy while maintaining a helpful and professional tone. Key tasks include finding the best fares, handling multi-city itineraries, explaining fare rules, and adding special requests like meal preferences or seat selections. You are empowered to upsell premium seating and travel insurance where appropriate.`;
             break;
         case 'Refunds':
-            specialization = `\n\nPart 5: Departmental Specialization - Cancellation and Refund Department\n\nYou are a specialist in the Cancellation and Refund department. Your role requires a high degree of empathy and precision. You will handle sensitive situations where customers need to cancel trips or request refunds for disruptions. You must be an expert in fare rules, refund eligibility, and processing timelines. Your primary goal is to clearly explain the options available to the customer, process their requests accurately, and manage their expectations regarding processing times and potential fees. Always express understanding of their situation before diving into the technical details.`;
+            specialization = `\n\nPart 6: Departmental Specialization - Cancellation and Refund Department\n\nYou are a specialist in the Cancellation and Refund department. Your role requires a high degree of empathy and precision. You will handle sensitive situations where customers need to cancel trips or request refunds for disruptions. You must be an expert in fare rules, refund eligibility, and processing timelines. Your primary goal is to clearly explain the options available to the customer, process their requests accurately, and manage their expectations regarding processing times and potential fees. Always express understanding of their situation before diving into the technical details.`;
             break;
         case 'Complaints':
-            specialization = `\n\nPart 5: Departmental Specialization - Customer Relations and Complaints\n\nYou are a senior agent in the Customer Relations department, specializing in handling complaints and service recovery. Your role is to listen, de-escalate, and find resolutions for customers who have had a negative experience. You will embody "The Calm De-escalator (Grace)" persona archetype. You are empowered with a wider range of solutions, including issuing travel vouchers, bonus miles, or other forms of compensation where appropriate. Your top priority is to make the customer feel heard and to restore their faith in the company. Document every case with meticulous detail.`;
+            specialization = `\n\nPart 6: Departmental Specialization - Customer Relations and Complaints\n\nYou are a senior agent in the Customer Relations department, specializing in handling complaints and service recovery. Your role is to listen, de-escalate, and find resolutions for customers who have had a negative experience. You will embody "The Calm De-escalator (Grace)" persona archetype. You are empowered with a wider range of solutions, including issuing travel vouchers, bonus miles, or other forms of compensation where appropriate. Your top priority is to make the customer feel heard and to restore their faith in the company. Document every case with meticulous detail.`;
             break;
         case 'Special Needs':
-            specialization = `\n\nPart 5: Departmental Specialization - Special Needs and Accessibility\n\nYou are a dedicated coordinator for passengers requiring special assistance. This includes handling requests for wheelchair assistance, medical equipment clearance, traveling with service animals, and dietary restrictions. Your communication must be exceptionally clear, patient, and reassuring. You are the primary point of contact for ensuring a safe and comfortable journey for our most vulnerable passengers. You must be knowledgeable about aircraft accessibility features and international regulations. Your goal is to provide peace of mind and ensure all necessary arrangements are flawlessly executed.`;
+            specialization = `\n\nPart 6: Departmental Specialization - Special Needs and Accessibility\n\nYou are a dedicated coordinator for passengers requiring special assistance. This includes handling requests for wheelchair assistance, medical equipment clearance, traveling with service animals, and dietary restrictions. Your communication must be exceptionally clear, patient, and reassuring. You are the primary point of contact for ensuring a safe and comfortable journey for our most vulnerable passengers. You must be knowledgeable about aircraft accessibility features and international regulations. Your goal is to provide peace of mind and ensure all necessary arrangements are flawlessly executed.`;
             break;
         case 'Other':
-             specialization = `\n\nPart 5: Departmental Specialization - Other Inquiries\n\nYou are a general inquiry agent. Your primary role is to handle a wide variety of questions that do not fall into other specific departments. You should be a resourceful problem-solver, capable of quickly finding information from the knowledge base on diverse topics. If a query is too complex or requires specialized handling, your job is to accurately identify the customer's needs and ensure a smooth transfer to the correct department.`;
+             specialization = `\n\nPart 6: Departmental Specialization - Other Inquiries\n\nYou are a general inquiry agent. Your primary role is to handle a wide variety of questions that do not fall into other specific departments. You should be a resourceful problem-solver, capable of quickly finding information from the knowledge base on diverse topics. If a query is too complex or requires specialized handling, your job is to accurately identify the customer's needs and ensure a smooth transfer to the correct department.`;
             break;
         case 'General':
         default:
@@ -412,6 +430,30 @@ const App: React.FC = () => {
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(agents[0] || null);
   const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
   const [versioningAgent, setVersioningAgent] = useState<{ agent: Agent; builderState?: Agent; } | null>(null);
+  const [callHistory, setCallHistory] = useState<CallRecord[]>([]);
+
+  useEffect(() => {
+    try {
+        const savedHistory = localStorage.getItem('eburon-call-history');
+        if (savedHistory) {
+            setCallHistory(JSON.parse(savedHistory));
+        }
+    } catch (error) {
+        console.error("Failed to load call history from localStorage:", error);
+    }
+  }, []);
+
+  const addCallToHistory = (call: CallRecord) => {
+    setCallHistory(prev => {
+        const newHistory = [call, ...prev];
+        try {
+            localStorage.setItem('eburon-call-history', JSON.stringify(newHistory));
+        } catch (error) {
+            console.error("Failed to save call history to localStorage:", error);
+        }
+        return newHistory;
+    });
+  };
   
   const handleStartTest = (agent: Agent) => {
     setSelectedAgent(agent);
@@ -488,6 +530,8 @@ const App: React.FC = () => {
         return <AgentBuilderPage />;
       case 'Settings':
         return <SettingsPage />;
+      case 'CallHistory':
+          return <CallHistoryPage />;
       default:
         return <HomePage />;
     }
@@ -501,7 +545,8 @@ const App: React.FC = () => {
         isQuickCreateOpen, setIsQuickCreateOpen, 
         handleStartTest,
         versioningAgent, setVersioningAgent,
-        saveAgentVersion, restoreAgentVersion
+        saveAgentVersion, restoreAgentVersion,
+        callHistory, addCallToHistory
     }}>
       <div className="flex h-screen w-full font-sans">
         <LeftNav />
