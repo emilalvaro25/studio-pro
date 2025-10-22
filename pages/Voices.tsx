@@ -74,22 +74,22 @@ const VoicesPage: React.FC = () => {
         <div className="p-6">
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-xl font-semibold text-text">Voices</h1>
-                <button className="flex items-center space-x-2 bg-brand-teal text-eburon-bg font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
+                <button className="flex items-center space-x-2 bg-primary text-white font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
                     <Plus size={18} />
                     <span>Add Voice</span>
                 </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {voices.map(voice => (
-                    <div key={voice.name} className="bg-card border border-border rounded-xl p-4 flex justify-between items-center">
+                    <div key={voice.name} className="bg-surface border border-border rounded-xl p-4 flex justify-between items-center">
                         <div>
                             <h3 className="font-semibold text-text">{voice.name}</h3>
-                            <p className="text-muted text-xs">{voice.style}</p>
+                            <p className="text-subtle text-sm">{voice.style}</p>
                         </div>
                         <button 
                             onClick={() => playPreview(voice.name, voice.prebuilt)}
                             disabled={!!loadingVoice || !!playingVoice}
-                            className="w-10 h-10 rounded-full bg-border hover:bg-brand-teal flex items-center justify-center transition-colors text-muted hover:text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                            className="w-10 h-10 rounded-full bg-panel hover:bg-primary flex items-center justify-center transition-colors text-subtle hover:text-white disabled:opacity-50 disabled:cursor-not-allowed">
                             {loadingVoice === voice.name ? <Loader2 size={20} className="animate-spin" /> : <Play size={20} />}
                         </button>
                     </div>

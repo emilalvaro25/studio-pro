@@ -1,9 +1,9 @@
 import { Blob } from 'buffer';
 
-export type View = 'Home' | 'Agents' | 'Calls' | 'Knowledge' | 'Voices' | 'Deploy' | 'Settings' | 'AgentBuilder' | 'CallHistory' | 'Database' | 'Profile';
+export type View = 'Home' | 'Agents' | 'Templates' | 'Calls' | 'Knowledge' | 'Voices' | 'Deploy' | 'Integrations' | 'Settings' | 'AgentBuilder' | 'CallHistory' | 'Database' | 'Profile';
 
 export type AgentStatus = 'Draft' | 'Ready' | 'Live';
-export type AgentTool = 'Knowledge' | 'Webhook' | 'Calendar' | 'Payments';
+export type AgentTool = 'Knowledge' | 'Webhook' | 'Calendar' | 'Payments' | 'Salesforce Lookup' | 'HubSpot Update';
 
 export type IntroSpielType = 'Concise' | 'Warm' | 'Custom';
 
@@ -43,6 +43,11 @@ export interface Agent {
   tools: AgentTool[];
   history: AgentVersion[];
   introSpiel: IntroSpiel;
+}
+
+export interface TemplateAgent extends Omit<Agent, 'id' | 'history' | 'updatedAt' | 'status'> {
+  category: string;
+  company: string;
 }
 
 export type NotificationType = 'success' | 'error' | 'info' | 'warn';

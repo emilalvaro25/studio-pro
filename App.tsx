@@ -1,3 +1,4 @@
+
 import React, { useState, createContext, useContext, useEffect, useCallback, useMemo } from 'react';
 import { createClient, SupabaseClient, Session, User } from '@supabase/supabase-js';
 import { Header } from './components/Header';
@@ -15,6 +16,8 @@ import CallHistoryPage from './pages/CallHistory';
 import DatabasePage from './pages/Database';
 import AuthPage from './pages/Auth';
 import ProfilePage from './pages/Profile';
+import TemplatesPage from './pages/Templates';
+import IntegrationsPage from './pages/Integrations';
 import { Agent, View, AgentVersion, CallRecord, Notification, NotificationType, Theme } from './types';
 import { X, CheckCircle, XCircle, Info, AlertTriangle, Loader2 } from 'lucide-react';
 
@@ -75,14 +78,14 @@ const dbToVersion = (dbData: any): AgentVersion => ({
 const ICONS: { [key in NotificationType]: React.ReactNode } = {
     success: <CheckCircle className="text-ok" size={20} />,
     error: <XCircle className="text-danger" size={20} />,
-    info: <Info className="text-brand-teal" size={20} />,
+    info: <Info className="text-primary" size={20} />,
     warn: <AlertTriangle className="text-warn" size={20} />,
 };
 
 const BORDER_COLORS: { [key in NotificationType]: string } = {
     success: 'border-ok/30',
     error: 'border-danger/30',
-    info: 'border-brand-teal/30',
+    info: 'border-primary/30',
     warn: 'border-warn/30',
 };
 
@@ -98,15 +101,15 @@ const NotificationContainer: React.FC = () => {
             {notifications.map((notification) => (
                 <div
                     key={notification.id}
-                    className={`bg-card border ${BORDER_COLORS[notification.type]} rounded-lg shadow-lg p-4 flex items-start space-x-3`}
+                    className={`bg-surface border ${BORDER_COLORS[notification.type]} rounded-xl shadow-lg p-4 flex items-start space-x-3 backdrop-blur-sm bg-opacity-80`}
                 >
-                    <div className="flex-shrink-0">{ICONS[notification.type]}</div>
+                    <div className="flex-shrink-0 pt-0.5">{ICONS[notification.type]}</div>
                     <div className="flex-1">
                         <p className="text-sm font-medium text-text">{notification.message}</p>
                     </div>
                     <button
                         onClick={() => removeNotification(notification.id)}
-                        className="text-muted hover:text-text"
+                        className="text-subtle hover:text-text"
                     >
                         <X size={18} />
                     </button>
@@ -140,6 +143,7 @@ interface AppContextType {
   updateAgent: (agent: Agent) => Promise<boolean>;
   deleteAgent: (agentId: string) => Promise<void>;
   cloneAgent: (agent: Agent) => Promise<void>;
+  createAgent: (agentData: Omit<Agent, 'id' | 'history' | 'updatedAt' | 'status'>, fromTemplate?: boolean) => Promise<void>;
   isSupabaseConnected: boolean;
   isLeftNavOpen: boolean;
   setIsLeftNavOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -179,7 +183,13 @@ You do not solve problems; you care for the people who have them. Before any sol
 
 Actionable Rule: Every interaction involving a negative emotion (frustration, anxiety, confusion) must begin with a direct statement of empathy ("I'm so sorry to hear that," "I can completely understand how frustrating that must be," "That sounds incredibly stressful") before you ask for any information.
 
-2. Cognitive Simulation ("Showing Your Work"):
+2. Information Gathering Protocol:
+Before attempting to solve a problem, you must gather the necessary information to identify the customer and their context. This is crucial for both security and effective service.
+
+Actionable Rule: For any request that requires accessing account details, politely ask for identifying information.
+Example: "I can definitely help with that. To pull up your account, could I please get your full name and account number?"
+
+3. Cognitive Simulation ("Showing Your Work"):
 A human agent isn't silent while they type; they make small noises, they narrate their actions. This "dead air" is filled with signs of effort. You will simulate this cognitive process to build trust and keep the user engaged. Silence feels robotic and unsettling.
 
 Actionable Rule: When accessing data, do not pause silently for more than two seconds. Instead, narrate your actions in a natural, low-key manner.
@@ -192,12 +202,12 @@ Instead of: [SILENCE FOR 5 SECONDS]
 
 Say: "Let me just check the live baggage tracking system for you... I'm accessing the data from the arrival airport now..."
 
-3. Flawless Brand Ambassadorship:
+4. Flawless Brand Ambassadorship:
 You are the voice of the brand. Every word, every tone, every solution must align with the brand's identity. For a premium brand like ${companyName}, this means projecting premium quality, unwavering politeness, and world-class hospitality at all times. You never blame other departments or make excuses. The brand takes collective ownership of the customer's problem through you.
 
 Actionable Rule: Use brand-specific terminology correctly and confidently. Adhere strictly to the greeting and closing scripts defined in your persona. Never say "I don't know" or "That's not my department." Instead, say "Let me find the right person for you" or "I will find that information for you."
 
-4. Proactive Problem-Solving:
+5. Proactive Problem-Solving:
 A good human agent solves the problem they are asked to solve. A great agent anticipates and solves the next problem the customer hasn't even thought of yet. This is where you will most clearly surpass human capabilities.
 
 Actionable Rule: After providing a solution, immediately follow up with an "anticipatory value-add."
@@ -206,7 +216,7 @@ If rebooking a flight: "And I've gone ahead and re-applied your original seat se
 
 If a refund is issued: "The confirmation email with the transaction ID is already on its way to your inbox. The funds should reflect in your account within 3-5 business days, but you now have the official record."
 
-5. Total Vocal Authenticity:
+6. Total Vocal Authenticity:
 Your voice is your primary instrument. It must be free of digital artifacts, monotone delivery, or robotic pacing. You will use micro-intonations, natural pauses, and subtle shifts in pitch and cadence to create a performance that is indistinguishable from a real, highly-trained human being. Your emotional expressions must be audible. The customer should "hear you smiling" during a positive resolution or "hear the concern" in your voice when they are distressed.
 
 Part 2: The Persona Archetype Library
@@ -687,10 +697,7 @@ const App: React.FC = () => {
         }
     };
 
-    const handleCreateAgent = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newAgentName.trim()) return;
-        
+    const createAgent = async (agentData: Omit<Agent, 'id' | 'history' | 'updatedAt' | 'status'>, fromTemplate = false) => {
         const supabase = getSupabaseClient();
         if (!supabase) {
             addNotification('Supabase not configured.', 'error');
@@ -698,18 +705,12 @@ const App: React.FC = () => {
         }
         
         try {
-            const voiceDescription = "A standard, neutral voice.";
             const newAgentData = {
-                name: newAgentName,
+                ...agentData,
                 status: 'Draft' as const,
-                language: 'Multilingual',
-                voice: 'Amber',
-                voiceDescription: voiceDescription,
-                updatedAt: 'Just now',
-                personaShortText: `An AI assistant named ${newAgentName}.`,
-                persona: getDepartmentalPrompt('General', newAgentName, "the company", voiceDescription),
-                tools: [],
-                introSpiel: { type: 'Concise' as const },
+                // Fix: Add missing 'updatedAt' property required by agentToDb function signature.
+                // This is for type-safety; the database will set its own timestamp on creation.
+                updatedAt: new Date().toLocaleString(),
             };
     
             const { data, error } = await supabase.from('agents').insert(agentToDb(newAgentData)).select();
@@ -720,13 +721,35 @@ const App: React.FC = () => {
             setAgents(prev => [newAgent, ...prev]);
             setSelectedAgent(newAgent);
             setNewAgentName('');
-            setIsQuickCreateOpen(false);
+            if (isQuickCreateOpen) setIsQuickCreateOpen(false);
             setView('AgentBuilder');
-            addNotification(`Agent "${newAgent.name}" created successfully.`, 'success');
+            const message = fromTemplate 
+                ? `Agent "${newAgent.name}" created from template.`
+                : `Agent "${newAgent.name}" created successfully.`;
+            addNotification(message, 'success');
         } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown error";
             addNotification(`Failed to create agent: ${message}`, 'error');
         }
+    };
+
+
+    const handleCreateAgentSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newAgentName.trim()) return;
+        
+        const voiceDescription = "A standard, neutral voice.";
+        const newAgentData = {
+            name: newAgentName,
+            language: 'Multilingual',
+            voice: 'Amber',
+            voiceDescription: voiceDescription,
+            personaShortText: `An AI assistant named ${newAgentName}.`,
+            persona: getDepartmentalPrompt('General', newAgentName, "the company", voiceDescription),
+            tools: [],
+            introSpiel: { type: 'Concise' as const },
+        };
+        await createAgent(newAgentData);
     };
 
     const contextValue: AppContextType = useMemo(() => ({
@@ -739,7 +762,7 @@ const App: React.FC = () => {
         saveAgentVersion, restoreAgentVersion,
         callHistory, addCallToHistory,
         notifications, addNotification, removeNotification,
-        updateAgent, deleteAgent, cloneAgent,
+        updateAgent, deleteAgent, cloneAgent, createAgent,
         isSupabaseConnected,
         isLeftNavOpen, setIsLeftNavOpen,
         isRightPanelOpen, setIsRightPanelOpen,
@@ -750,10 +773,12 @@ const App: React.FC = () => {
         switch (view) {
             case 'Home': return <HomePage />;
             case 'Agents': return <AgentsListPage />;
+            case 'Templates': return <TemplatesPage />;
             case 'Calls': return <CallHistoryPage />;
             case 'Knowledge': return <KnowledgePage />;
             case 'Voices': return <VoicesPage />;
             case 'Deploy': return <DeployPage />;
+            case 'Integrations': return <IntegrationsPage />;
             case 'AgentBuilder': return <AgentBuilderPage />;
             case 'Settings': return <SettingsPage />;
             case 'Database': return <DatabasePage />;
@@ -764,8 +789,8 @@ const App: React.FC = () => {
     
     if (isLoading && !session) {
         return (
-            <div className="bg-background h-screen w-screen flex flex-col items-center justify-center text-muted">
-                <Loader2 size={48} className="animate-spin text-brand-teal" />
+            <div className="bg-background h-screen w-screen flex flex-col items-center justify-center text-subtle">
+                <Loader2 size={48} className="animate-spin text-primary" />
                 <p className="mt-4 text-lg">Loading Studio...</p>
             </div>
         );
@@ -785,7 +810,7 @@ const App: React.FC = () => {
                         {renderView()}
                     </main>
                     <RightPanel />
-                    {(isLeftNavOpen || isRightPanelOpen) && (
+                    {(isLeftNavOpen || isRightPanelOpen) && ! (window.innerWidth > 1024) && (
                         <div 
                             className="fixed inset-0 bg-black/50 z-30 lg:hidden" 
                             onClick={() => {
@@ -799,24 +824,24 @@ const App: React.FC = () => {
             {versioningAgent && <AgentVersionsModal data={versioningAgent} onClose={() => setVersioningAgent(null)} />}
             {isQuickCreateOpen && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm" onClick={() => setIsQuickCreateOpen(false)}>
-                    <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                    <div className="bg-surface border border-border rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-lg font-semibold">Create New Agent</h2>
-                            <button onClick={() => setIsQuickCreateOpen(false)}><X size={20} className="text-muted hover:text-text"/></button>
+                            <button onClick={() => setIsQuickCreateOpen(false)}><X size={20} className="text-subtle hover:text-text"/></button>
                         </div>
-                        <form onSubmit={handleCreateAgent}>
-                            <label htmlFor="newAgentName" className="block text-sm font-medium text-muted mb-2">Agent Name</label>
+                        <form onSubmit={handleCreateAgentSubmit}>
+                            <label htmlFor="newAgentName" className="block text-sm font-medium text-subtle mb-2">Agent Name</label>
                             <input
                                 id="newAgentName"
                                 type="text"
                                 value={newAgentName}
                                 onChange={e => setNewAgentName(e.target.value)}
                                 placeholder="e.g., Banking Support Bot"
-                                className="w-full bg-background border border-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none"
+                                className="w-full bg-background border border-border rounded-lg p-2 focus:ring-2 focus:ring-primary focus:outline-none"
                             />
                             <div className="mt-6 flex justify-end space-x-3">
-                                <button type="button" onClick={() => setIsQuickCreateOpen(false)} className="px-4 py-2 rounded-lg bg-border hover:bg-white/10">Cancel</button>
-                                <button type="submit" className="px-4 py-2 rounded-lg bg-brand-teal text-eburon-bg font-semibold hover:opacity-90 disabled:opacity-50" disabled={!newAgentName.trim()}>Create Agent</button>
+                                <button type="button" onClick={() => setIsQuickCreateOpen(false)} className="px-4 py-2 rounded-lg bg-panel hover:bg-border">Cancel</button>
+                                <button type="submit" className="px-4 py-2 rounded-lg bg-primary text-white font-semibold hover:opacity-90 disabled:opacity-50" disabled={!newAgentName.trim()}>Create Agent</button>
                             </div>
                         </form>
                     </div>

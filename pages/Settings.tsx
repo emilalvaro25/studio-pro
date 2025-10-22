@@ -24,13 +24,13 @@ const SettingsPage: React.FC = () => {
 
     const InputField: React.FC<{ label: string; value: string; onChange: (value: string) => void; isSecret?: boolean; disabled?: boolean; }> = ({ label, value, onChange, isSecret = false, disabled = false }) => (
         <div>
-            <label className="block text-sm font-medium text-muted mb-1">{label}</label>
+            <label className="block text-sm font-medium text-subtle mb-1">{label}</label>
             <input 
                 type={isSecret ? "password" : "text"}
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 disabled={disabled}
-                className="w-full bg-background border border-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-background border border-border rounded-lg p-2 focus:ring-2 focus:ring-primary focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             />
         </div>
     );
@@ -39,35 +39,35 @@ const SettingsPage: React.FC = () => {
         <div className="p-6">
             <h1 className="text-xl font-semibold text-text mb-6">Settings</h1>
             <div className="max-w-2xl mx-auto space-y-8">
-                <div className="bg-card border border-border rounded-xl p-6">
+                <div className="bg-surface border border-border rounded-xl p-6">
                     <h2 className="text-lg font-semibold mb-4">API Keys</h2>
                     <div className="space-y-4">
                         <InputField label="Gemini API Key" value="Configured via environment variable" onChange={() => {}} isSecret disabled />
                     </div>
                 </div>
-                <div className="bg-card border border-border rounded-xl p-6">
+                <div className="bg-surface border border-border rounded-xl p-6">
                     <h2 className="text-lg font-semibold mb-4">Supabase Credentials</h2>
-                    <p className="text-sm text-muted mb-4">Your Supabase project details are configured via environment variables for security.</p>
+                    <p className="text-sm text-subtle mb-4">Your Supabase project details are configured via environment variables for security.</p>
                     <div className="space-y-4">
                         <InputField label="Supabase Project URL" value="Configured via environment variable" onChange={() => {}} disabled />
                         <InputField label="Supabase Anon Key" value="Configured via environment variable" onChange={() => {}} isSecret disabled />
                     </div>
                 </div>
-                <div className="bg-card border border-border rounded-xl p-6">
+                <div className="bg-surface border border-border rounded-xl p-6">
                     <h2 className="text-lg font-semibold mb-4">Configuration</h2>
                      <div className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-muted mb-1">Default Compute Region</label>
-                            <select value={defaultRegion} onChange={e => setDefaultRegion(e.target.value)} className="w-full bg-background border border-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none">
+                            <label className="block text-sm font-medium text-subtle mb-1">Default Compute Region</label>
+                            <select value={defaultRegion} onChange={e => setDefaultRegion(e.target.value)} className="w-full bg-background border border-border rounded-lg p-2 focus:ring-2 focus:ring-primary focus:outline-none">
                                 <option>us-central1</option>
                                 <option>europe-west1</option>
                                 <option>asia-east1</option>
                             </select>
                         </div>
                          <div>
-                            <label className="block text-sm font-medium text-muted mb-1">Logging & PII Redaction</label>
-                             <input type="range" min="0" max="100" value={loggingLevel} onChange={e => setLoggingLevel(parseInt(e.target.value, 10))} className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-brand-teal" />
-                             <div className="flex justify-between text-xs text-muted">
+                            <label className="block text-sm font-medium text-subtle mb-1">Logging & PII Redaction</label>
+                             <input type="range" min="0" max="100" value={loggingLevel} onChange={e => setLoggingLevel(parseInt(e.target.value, 10))} className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-primary" />
+                             <div className="flex justify-between text-xs text-subtle">
                                  <span>None</span>
                                  <span>Standard</span>
                                  <span>Maximum</span>
@@ -76,7 +76,7 @@ const SettingsPage: React.FC = () => {
                     </div>
                 </div>
                  <div className="flex justify-end">
-                    <button onClick={handleSave} className="px-6 py-2 rounded-lg bg-brand-teal text-eburon-bg font-semibold hover:opacity-90">
+                    <button onClick={handleSave} className="px-6 py-2 rounded-lg bg-primary text-white font-semibold hover:opacity-90">
                         Save Settings
                     </button>
                 </div>

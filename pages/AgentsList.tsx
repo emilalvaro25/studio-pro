@@ -2,12 +2,13 @@ import React, { useState, useMemo } from 'react';
 import { Plus, MoreVertical, Play, Edit, Bot, History } from 'lucide-react';
 import { useAppContext } from '../App';
 import { Agent, AgentStatus } from '../types';
+import Tooltip from '../components/Tooltip';
 
 const StatusPill: React.FC<{ status: AgentStatus }> = ({ status }) => {
   const styles = {
-    Draft: 'bg-muted/20 text-muted',
+    Draft: 'bg-subtle/20 text-subtle',
     Ready: 'bg-ok/20 text-ok',
-    Live: 'bg-brand-teal/20 text-brand-teal',
+    Live: 'bg-primary/20 text-primary',
   };
   return <span className={`px-2 py-1 text-xs rounded-full font-medium ${styles[status]}`}>{status}</span>;
 };
@@ -49,9 +50,9 @@ const AgentsListPage: React.FC = () => {
                         placeholder="Search agents..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
-                        className="w-64 bg-card border border-border rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-brand-teal focus:outline-none"
+                        className="w-64 bg-surface border border-border rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-primary focus:outline-none"
                     />
-                    <button onClick={() => setIsQuickCreateOpen(true)} data-id="btn-new-agent" className="flex items-center space-x-2 bg-brand-teal text-eburon-bg font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
+                    <button onClick={() => setIsQuickCreateOpen(true)} data-id="btn-new-agent" className="flex items-center space-x-2 bg-primary text-white font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
                         <Plus size={18} />
                         <span>New Agent</span>
                     </button>
@@ -59,32 +60,40 @@ const AgentsListPage: React.FC = () => {
             </div>
 
             {agents.length > 0 ? (
-                <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <div className="bg-surface border border-border rounded-xl overflow-hidden">
                     <table className="w-full text-left">
-                        <thead className="border-b border-border text-xs text-muted uppercase">
+                        <thead className="border-b border-border text-xs text-subtle uppercase">
                             <tr>
                                 <th className="p-4 font-medium">Name</th>
                                 <th className="p-4 font-medium">Status</th>
                                 <th className="p-4 font-medium">Language</th>
                                 <th className="p-4 font-medium">Voice</th>
                                 <th className="p-4 font-medium">Updated</th>
-                                <th className="p-4 font-medium">Actions</th>
+                                <th className="p-4 font-medium text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
                             {filteredAgents.map(agent => (
-                                <tr key={agent.id} className="hover:bg-primary/5 cursor-pointer" onClick={() => setSelectedAgent(agent)}>
+                                <tr key={agent.id} className="hover:bg-panel cursor-pointer" onClick={() => setSelectedAgent(agent)}>
                                     <td className="p-4 font-semibold text-text">{agent.name}</td>
                                     <td className="p-4"><StatusPill status={agent.status} /></td>
-                                    <td className="p-4 text-muted">{agent.language}</td>
-                                    <td className="p-4 text-muted">{agent.voice}</td>
-                                    <td className="p-4 text-muted">{agent.updatedAt}</td>
+                                    <td className="p-4 text-subtle">{agent.language}</td>
+                                    <td className="p-4 text-subtle">{agent.voice}</td>
+                                    <td className="p-4 text-subtle">{agent.updatedAt}</td>
                                     <td className="p-4">
-                                        <div className="flex items-center space-x-3 text-muted">
-                                            <button onClick={(e) => handleTest(e, agent)} className="hover:text-brand-teal" title="Test"><Play size={18}/></button>
-                                            <button onClick={(e) => handleEdit(e, agent)} className="hover:text-brand-gold" title="Edit"><Edit size={18}/></button>
-                                            <button onClick={(e) => handleOpenVersions(e, agent)} className="hover:text-text" title="Version History"><History size={18}/></button>
-                                            <button className="hover:text-text" title="More" onClick={(e) => e.stopPropagation()}><MoreVertical size={18}/></button>
+                                        <div className="flex items-center justify-center space-x-2 text-subtle">
+                                            <Tooltip text="Test">
+                                                <button onClick={(e) => handleTest(e, agent)} className="p-2 rounded-full hover:text-primary hover:bg-primary/10"><Play size={16}/></button>
+                                            </Tooltip>
+                                            <Tooltip text="Edit">
+                                                <button onClick={(e) => handleEdit(e, agent)} className="p-2 rounded-full hover:text-brand-gold hover:bg-brand-gold/10"><Edit size={16}/></button>
+                                            </Tooltip>
+                                            <Tooltip text="Version History">
+                                                <button onClick={(e) => handleOpenVersions(e, agent)} className="p-2 rounded-full hover:text-text hover:bg-panel"><History size={16}/></button>
+                                            </Tooltip>
+                                            <Tooltip text="More">
+                                                <button className="p-2 rounded-full hover:text-text hover:bg-panel" onClick={(e) => e.stopPropagation()}><MoreVertical size={16}/></button>
+                                            </Tooltip>
                                         </div>
                                     </td>
                                 </tr>
@@ -93,14 +102,14 @@ const AgentsListPage: React.FC = () => {
                     </table>
                 </div>
             ) : (
-                <div className="text-center py-20 bg-card border border-border rounded-xl">
-                    <Bot size={48} className="mx-auto text-muted" />
+                <div className="text-center py-20 bg-surface border border-border rounded-xl">
+                    <Bot size={48} className="mx-auto text-subtle" />
                     <h2 className="mt-4 text-lg font-semibold text-text">No agents yet.</h2>
-                    <p className="mt-1 text-muted">Create your first agent to get started.</p>
+                    <p className="mt-1 text-subtle">Create your first agent to get started.</p>
                     <button 
                         onClick={() => setIsQuickCreateOpen(true)} 
                         data-id="btn-new-agent-empty" 
-                        className="mt-6 flex items-center mx-auto space-x-2 bg-brand-teal text-eburon-bg font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
+                        className="mt-6 flex items-center mx-auto space-x-2 bg-primary text-white font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
                     >
                         <Plus size={18} />
                         <span>New Agent</span>

@@ -64,7 +64,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ addNotification }) => {
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 required
-                className="w-full bg-background border border-border rounded-lg p-3 focus:ring-2 focus:ring-brand-teal focus:outline-none"
+                className="w-full bg-background border border-border rounded-lg p-3 focus:ring-2 focus:ring-primary focus:outline-none"
             />
             {authView !== 'forgotPassword' && (
                 <input
@@ -73,13 +73,13 @@ const AuthPage: React.FC<AuthPageProps> = ({ addNotification }) => {
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     required={authView !== 'forgotPassword'}
-                    className="w-full bg-background border border-border rounded-lg p-3 focus:ring-2 focus:ring-brand-teal focus:outline-none"
+                    className="w-full bg-background border border-border rounded-lg p-3 focus:ring-2 focus:ring-primary focus:outline-none"
                 />
             )}
             <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex items-center justify-center p-3 rounded-lg bg-brand-teal text-eburon-bg font-semibold hover:opacity-90 disabled:opacity-50"
+                className="w-full flex items-center justify-center p-3 rounded-lg bg-primary text-white font-semibold hover:opacity-90 disabled:opacity-50"
             >
                 {loading && <Loader2 size={20} className="animate-spin mr-2" />}
                 {authView === 'signIn' && 'Sign In'}
@@ -93,31 +93,31 @@ const AuthPage: React.FC<AuthPageProps> = ({ addNotification }) => {
         <div className="h-screen w-screen bg-background flex items-center justify-center p-4 font-sans">
             <div className="w-full max-w-md mx-auto">
                 <div className="text-center mb-8">
-                    <img src="https://eburon.vercel.app/logo-dark.png" alt="Eburon Logo" className="h-12 w-12 mx-auto mb-4 dark:invert-0 invert" />
+                    <img src="https://eburon.vercel.app/logo-dark.png" alt="Eburon Logo" className="h-[55px] w-[140px] object-contain mx-auto mb-4 dark:invert-0 invert" />
                     <h1 className="text-2xl font-bold text-text">Welcome to Eburon Studio</h1>
-                    <p className="text-muted">
+                    <p className="text-subtle">
                         {authView === 'signIn' && 'Sign in to continue to your workspace.'}
                         {authView === 'signUp' && 'Create an account to get started.'}
                         {authView === 'forgotPassword' && 'Enter your email to reset your password.'}
                     </p>
                 </div>
 
-                <div className="bg-card border border-border rounded-xl p-8">
+                <div className="bg-surface border border-border rounded-xl p-8">
                     {AuthForm()}
                     <div className="mt-6 text-center text-sm">
                         {authView === 'signIn' && (
                             <>
-                                <p className="text-muted">
+                                <p className="text-subtle">
                                     Don't have an account?{' '}
-                                    <button onClick={() => setAuthView('signUp')} className="font-medium text-brand-teal hover:underline">Sign up</button>
+                                    <button onClick={() => setAuthView('signUp')} className="font-medium text-primary hover:underline">Sign up</button>
                                 </p>
-                                <button onClick={() => setAuthView('forgotPassword')} className="mt-2 font-medium text-muted hover:text-brand-teal hover:underline text-xs">Forgot password?</button>
+                                <button onClick={() => setAuthView('forgotPassword')} className="mt-2 font-medium text-subtle hover:text-primary hover:underline text-xs">Forgot password?</button>
                             </>
                         )}
                         {(authView === 'signUp' || authView === 'forgotPassword') && (
-                            <p className="text-muted">
+                            <p className="text-subtle">
                                 Already have an account?{' '}
-                                <button onClick={() => setAuthView('signIn')} className="font-medium text-brand-teal hover:underline">Sign in</button>
+                                <button onClick={() => setAuthView('signIn')} className="font-medium text-primary hover:underline">Sign in</button>
                             </p>
                         )}
                     </div>

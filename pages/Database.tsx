@@ -1,6 +1,7 @@
 import React from 'react';
 import { Copy, Check } from 'lucide-react';
 import { useAppContext } from '../App';
+import Tooltip from '../components/Tooltip';
 
 const schemaContent = `-- Eburon CSR Studio Supabase Schema
 -- Version 1.0
@@ -129,17 +130,18 @@ const DatabasePage: React.FC = () => {
     return (
         <div className="p-6 h-full flex flex-col">
             <h1 className="text-xl font-semibold text-text mb-2">Database Schema</h1>
-            <p className="text-muted mb-6">
+            <p className="text-subtle mb-6">
                 Use this SQL schema to set up your Supabase PostgreSQL database. This allows you to own and manage your agent data.
             </p>
-            <div className="relative flex-1 bg-background border border-border rounded-xl overflow-hidden">
-                <button
-                    onClick={copyToClipboard}
-                    className="absolute top-3 right-3 flex items-center space-x-2 bg-border text-text font-semibold px-3 py-1.5 rounded-lg hover:bg-primary/10 transition-colors z-10"
-                >
-                    <Copy size={16} />
-                    <span>Copy Schema</span>
-                </button>
+            <div className="relative flex-1 bg-surface border border-border rounded-xl overflow-hidden">
+                <Tooltip text="Copy Schema">
+                    <button
+                        onClick={copyToClipboard}
+                        className="absolute top-3 right-3 flex items-center space-x-2 bg-panel text-text font-semibold px-3 py-1.5 rounded-lg hover:bg-border transition-colors z-10"
+                    >
+                        <Copy size={16} />
+                    </button>
+                </Tooltip>
                 <pre className="h-full w-full overflow-auto p-4 font-mono text-sm text-text">
                     <code>
                         {schemaContent.trim()}

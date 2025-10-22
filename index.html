@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -19,16 +20,18 @@
             },
             colors: {
               'background': 'hsl(var(--background))',
-              'card': 'hsl(var(--card))',
+              'surface': 'hsl(var(--surface))',
+              'panel': 'hsl(var(--panel))',
               'text': 'hsl(var(--text))',
+              'subtle': 'hsl(var(--subtle))',
               'muted': 'hsl(var(--muted))',
               'border': 'hsl(var(--border))',
               'primary': 'hsl(var(--primary))',
-              'brand-teal': '#19c2ff',
-              'brand-gold': '#f6c453',
-              'ok': '#22c55e',
-              'warn': '#ffd479',
-              'danger': '#ef4444',
+              'brand-teal': 'hsl(var(--brand-teal))',
+              'brand-gold': 'hsl(var(--brand-gold))',
+              'ok': 'hsl(var(--ok))',
+              'warn': 'hsl(var(--warn))',
+              'danger': 'hsl(var(--danger))',
             }
           }
         }
@@ -37,30 +40,42 @@
     <style>
       :root {
         /* Light Theme */
-        --background: 0 0% 98%;
-        --card: 0 0% 100%;
-        --text: 240 10% 4%;
-        --muted: 240 4% 46%;
-        --border: 240 6% 90%;
-        --primary: 196 100% 55%;
+        --background: 220 20% 97%;
+        --surface: 0 0% 100%;
+        --panel: 220 20% 99%;
+        --text: 220 15% 25%;
+        --subtle: 220 10% 55%;
+        --muted: 220 10% 70%;
+        --border: 220 15% 90%;
+        --primary: 205 90% 55%;
+        --brand-teal: 190 85% 45%;
+        --brand-gold: 40 95% 60%;
+        --ok: 145 63% 42%;
+        --warn: 45 100% 70%;
+        --danger: 0 72% 51%;
       }
       .dark {
         /* Dark Theme */
-        --background: 216 19% 11%;
-        --background-gradient-start: 218 19% 6%;
-        --card: 220 17% 9%;
-        --text: 220 14% 91%;
-        --muted: 215 9% 63%;
-        --border: 216 15% 15%;
-        --primary: 196 100% 55%;
+        --background: 222 25% 6%;
+        --surface: 222 24% 9%;
+        --panel: 222 24% 12%;
+        --text: 220 20% 94%;
+        --subtle: 220 15% 65%;
+        --muted: 220 10% 45%;
+        --border: 220 20% 15%;
+        --primary: 205 90% 60%;
+        --brand-teal: 190 85% 50%;
+        --brand-gold: 40 95% 65%;
+        --ok: 145 63% 52%;
+        --warn: 45 100% 75%;
+        --danger: 0 72% 61%;
       }
       body {
         background-color: hsl(var(--background));
         color: hsl(var(--text));
         transition: background-color 0.3s ease, color 0.3s ease;
-      }
-      .dark body {
-        background: linear-gradient(180deg, hsl(var(--background-gradient-start)) 0%, hsl(var(--background)) 100%);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
     </style>
   <script type="importmap">
