@@ -1,21 +1,13 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../App';
-import { Plus, Copy, Rocket, Trash2 } from 'lucide-react';
+import { Plus, Copy, Rocket, Trash2, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import type { Agent, AgentStatus } from '../types';
 
 type Tab = 'Actions' | 'Properties';
 
 export const RightPanel: React.FC = () => {
-  const { selectedAgent, agents, setSelectedAgent, setIsQuickCreateOpen, addNotification, cloneAgent, updateAgent, deleteAgent } = useAppContext();
+  const { selectedAgent, setIsQuickCreateOpen, addNotification, cloneAgent, updateAgent, deleteAgent, isRightPanelOpen, setIsRightPanelOpen } = useAppContext();
   const [activeTab, setActiveTab] = useState<Tab>('Properties');
-  
-  if (!selectedAgent) {
-    return (
-      <aside className="w-96 bg-eburon-card border-l border-eburon-border p-4 flex flex-col">
-        <div className="text-center text-eburon-muted mt-10">No agent selected.</div>
-      </aside>
-    );
-  }
   
   const handleClone = async () => {
     if (!selectedAgent) return;
@@ -55,7 +47,7 @@ export const RightPanel: React.FC = () => {
     </div>
   );
 
-  const renderProperties = () => (
+  const renderProperties = () => selectedAgent && (
     <div className="space-y-4 text-xs">
         <div>
             <label className="block text-eburon-muted mb-1">Name</label>
@@ -97,22 +89,40 @@ export const RightPanel: React.FC = () => {
   }
 
   return (
-    <aside className="w-96 bg-eburon-card border-l border-eburon-border p-4 flex flex-col space-y-4">
-      <h2 className="text-lg font-semibold text-eburon-text">{selectedAgent.name}</h2>
-      
-      <div className="flex border-b border-eburon-border">
-          {(['Properties', 'Actions'] as Tab[]).map(tab => (
-              <button key={tab} 
-                onClick={() => setActiveTab(tab)}
-                className={`px-3 py-2 text-sm transition-colors ${activeTab === tab ? 'text-brand-teal border-b-2 border-brand-teal' : 'text-eburon-muted hover:text-eburon-text'}`}>
-                  {tab}
-              </button>
-          ))}
-      </div>
+    <aside className={`bg-eburon-card border-l border-eburon-border flex-col z-40
+        fixed inset-y-0 right-0
+        transform transition-transform lg:transition-all duration-300 ease-in-out
+        ${isRightPanelOpen ? 'translate-x-0' : 'translate-x-full'}
+        lg:relative lg:translate-x-0
+        ${isRightPanelOpen ? 'lg:w-96 p-4 flex' : 'lg:w-0 lg:p-0 lg:overflow-hidden hidden'}
+    `}>
+        <button 
+            onClick={() => setIsRightPanelOpen(prev => !prev)}
+            className="hidden lg:flex items-center justify-center absolute top-1/2 -left-4 transform -translate-y-1/2 bg-eburon-border text-eburon-muted hover:text-eburon-text rounded-full p-1 z-50 border-4 border-eburon-bg"
+            aria-label={isRightPanelOpen ? "Collapse panel" : "Expand panel"}
+        >
+            {isRightPanelOpen ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
+        </button>
 
-      <div className="flex-1 overflow-y-auto">
-        {renderTabContent()}
-      </div>
+        {!selectedAgent ? (
+            <div className="text-center text-eburon-muted mt-10">No agent selected.</div>
+        ) : (
+            <>
+                <h2 className="text-lg font-semibold text-eburon-text">{selectedAgent.name}</h2>
+                <div className="flex border-b border-eburon-border mt-4">
+                    {(['Properties', 'Actions'] as Tab[]).map(tab => (
+                        <button key={tab} 
+                          onClick={() => setActiveTab(tab)}
+                          className={`px-3 py-2 text-sm transition-colors ${activeTab === tab ? 'text-brand-teal border-b-2 border-brand-teal' : 'text-eburon-muted hover:text-eburon-text'}`}>
+                            {tab}
+                        </button>
+                    ))}
+                </div>
+                <div className="flex-1 overflow-y-auto pt-4">
+                  {renderTabContent()}
+                </div>
+            </>
+        )}
     </aside>
   );
 };

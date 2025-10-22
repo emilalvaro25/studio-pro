@@ -18,8 +18,9 @@ import { X, CheckCircle, XCircle, Info, AlertTriangle, Loader2 } from 'lucide-re
 
 // --- Supabase Client Helper ---
 const getSupabaseClient = (): SupabaseClient | null => {
-    const url = localStorage.getItem('supabaseUrl');
-    const key = localStorage.getItem('supabaseAnonKey');
+    // FIX: Use environment variables for Supabase credentials.
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_ANON_KEY;
     if (url && key) {
         return createClient(url, key);
     }
@@ -141,6 +142,10 @@ interface AppContextType {
   deleteAgent: (agentId: string) => Promise<void>;
   cloneAgent: (agent: Agent) => Promise<void>;
   isSupabaseConnected: boolean;
+  isLeftNavOpen: boolean;
+  setIsLeftNavOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  isRightPanelOpen: boolean;
+  setIsRightPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -434,6 +439,8 @@ const App: React.FC = () => {
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
+    const [isLeftNavOpen, setIsLeftNavOpen] = useState(window.innerWidth > 1024);
+    const [isRightPanelOpen, setIsRightPanelOpen] = useState(window.innerWidth > 1024);
 
     const removeNotification = useCallback((id: number) => {
         setNotifications(prev => prev.filter(n => n.id !== id));
@@ -446,6 +453,22 @@ const App: React.FC = () => {
             removeNotification(id);
         }, 5000); // Auto-dismiss after 5 seconds
     }, [removeNotification]);
+
+    useEffect(() => {
+        const handleResize = () => {
+            const isDesktop = window.innerWidth > 1024;
+            if (!isDesktop) {
+                setIsLeftNavOpen(false);
+                setIsRightPanelOpen(false);
+            } else {
+                setIsLeftNavOpen(true);
+                setIsRightPanelOpen(true);
+            }
+        };
+        window.addEventListener('resize', handleResize);
+        handleResize(); // Initial check
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     useEffect(() => {
         const loadData = async () => {
@@ -738,8 +761,10 @@ const App: React.FC = () => {
         callHistory, addCallToHistory,
         notifications, addNotification, removeNotification,
         updateAgent, deleteAgent, cloneAgent,
-        isSupabaseConnected
-    }), [view, selectedAgent, agents, isQuickCreateOpen, versioningAgent, callHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent, cloneAgent, isSupabaseConnected]);
+        isSupabaseConnected,
+        isLeftNavOpen, setIsLeftNavOpen,
+        isRightPanelOpen, setIsRightPanelOpen,
+    }), [view, selectedAgent, agents, isQuickCreateOpen, versioningAgent, callHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent, cloneAgent, isSupabaseConnected, isLeftNavOpen, isRightPanelOpen]);
 
     const renderView = () => {
         switch (view) {
@@ -769,12 +794,22 @@ const App: React.FC = () => {
         <AppContext.Provider value={contextValue}>
             <div className="bg-eburon-bg text-eburon-text font-sans h-screen w-screen flex flex-col overflow-hidden">
                 <Header />
-                <div className="flex flex-1 min-h-0">
+                <div className="flex flex-1 min-h-0 relative">
                     <LeftNav />
-                    <main className="flex-1 overflow-y-auto">
+                    <main className="flex-1 overflow-y-auto bg-eburon-bg">
                         {renderView()}
                     </main>
                     <RightPanel />
+                    {/* Backdrop for mobile */}
+                    {(isLeftNavOpen || isRightPanelOpen) && (
+                        <div 
+                            className="fixed inset-0 bg-black/50 z-30 lg:hidden" 
+                            onClick={() => {
+                                setIsLeftNavOpen(false);
+                                setIsRightPanelOpen(false);
+                            }}
+                        />
+                    )}
                 </div>
             </div>
             {versioningAgent && <AgentVersionsModal data={versioningAgent} onClose={() => setVersioningAgent(null)} />}

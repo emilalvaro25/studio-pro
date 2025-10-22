@@ -3,18 +3,11 @@ import { useAppContext } from '../App';
 
 const SettingsPage: React.FC = () => {
     const { addNotification } = useAppContext();
-    const [supabaseUrl, setSupabaseUrl] = useState('');
-    const [supabaseAnonKey, setSupabaseAnonKey] = useState('');
     const [defaultRegion, setDefaultRegion] = useState('us-central1');
     const [loggingLevel, setLoggingLevel] = useState(75);
 
 
     useEffect(() => {
-        const storedUrl = localStorage.getItem('supabaseUrl') || 'https://gvpapymyndpxrlsbdvhi.supabase.co';
-        const storedKey = localStorage.getItem('supabaseAnonKey') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2cGFweW15bmRweHJsc2JkdmhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjExNTk2NjMsImV4cCI6MjA3NjczNTY2M30.0mMnrD0Zbkai2ypfc3djkHSUVuT9Io4JS6vAmjM6pLA';
-        setSupabaseUrl(storedUrl);
-        setSupabaseAnonKey(storedKey);
-
         const storedRegion = localStorage.getItem('defaultRegion') || 'us-central1';
         setDefaultRegion(storedRegion);
 
@@ -24,21 +17,20 @@ const SettingsPage: React.FC = () => {
     }, []);
 
     const handleSave = () => {
-        localStorage.setItem('supabaseUrl', supabaseUrl);
-        localStorage.setItem('supabaseAnonKey', supabaseAnonKey);
         localStorage.setItem('defaultRegion', defaultRegion);
         localStorage.setItem('loggingLevel', String(loggingLevel));
         addNotification('Settings saved successfully. Refresh might be needed for some changes.', 'success');
     };
 
-    const InputField: React.FC<{ label: string; value: string; onChange: (value: string) => void; isSecret?: boolean; }> = ({ label, value, onChange, isSecret = false }) => (
+    const InputField: React.FC<{ label: string; value: string; onChange: (value: string) => void; isSecret?: boolean; disabled?: boolean; }> = ({ label, value, onChange, isSecret = false, disabled = false }) => (
         <div>
             <label className="block text-sm font-medium text-eburon-muted mb-1">{label}</label>
             <input 
                 type={isSecret ? "password" : "text"}
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
-                className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none"
+                disabled={disabled}
+                className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             />
         </div>
     );
@@ -50,15 +42,15 @@ const SettingsPage: React.FC = () => {
                 <div className="bg-eburon-card border border-eburon-border rounded-xl p-6">
                     <h2 className="text-lg font-semibold mb-4">API Keys</h2>
                     <div className="space-y-4">
-                        <InputField label="Gemini API Key (Handled by Environment)" value="••••••••••••••••••••••••••••" onChange={() => {}} isSecret />
+                        <InputField label="Gemini API Key" value="Configured via environment variable" onChange={() => {}} isSecret disabled />
                     </div>
                 </div>
                 <div className="bg-eburon-card border border-eburon-border rounded-xl p-6">
                     <h2 className="text-lg font-semibold mb-4">Supabase Credentials</h2>
-                    <p className="text-sm text-eburon-muted mb-4">Provide your Supabase project details to enable database and storage features.</p>
+                    <p className="text-sm text-eburon-muted mb-4">Your Supabase project details are configured via environment variables for security.</p>
                     <div className="space-y-4">
-                        <InputField label="Supabase Project URL" value={supabaseUrl} onChange={setSupabaseUrl} />
-                        <InputField label="Supabase Anon Key" value={supabaseAnonKey} onChange={setSupabaseAnonKey} isSecret />
+                        <InputField label="Supabase Project URL" value="Configured via environment variable" onChange={() => {}} disabled />
+                        <InputField label="Supabase Anon Key" value="Configured via environment variable" onChange={() => {}} isSecret disabled />
                     </div>
                 </div>
                 <div className="bg-eburon-card border border-eburon-border rounded-xl p-6">
@@ -85,7 +77,7 @@ const SettingsPage: React.FC = () => {
                 </div>
                  <div className="flex justify-end">
                     <button onClick={handleSave} className="px-6 py-2 rounded-lg bg-brand-teal text-eburon-bg font-semibold hover:opacity-90">
-                        Save All Settings
+                        Save Settings
                     </button>
                 </div>
             </div>

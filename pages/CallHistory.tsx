@@ -12,8 +12,8 @@ import {
 
 // --- Supabase Client Helper ---
 const getSupabaseClient = (): SupabaseClient | null => {
-    const url = localStorage.getItem('supabaseUrl');
-    const key = localStorage.getItem('supabaseAnonKey');
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_ANON_KEY;
     if (url && key) {
         return createClient(url, key);
     }
@@ -338,7 +338,7 @@ const CallHistoryPage: React.FC = () => {
                     </button>
                 </div>
                 <div className="flex-1 bg-eburon-card border border-eburon-border rounded-xl flex overflow-hidden">
-                    <aside className="w-1/3 border-r border-eburon-border flex flex-col">
+                    <aside className="w-full md:w-1/3 border-r border-eburon-border flex-col md:flex hidden">
                         <div className="p-4 border-b border-eburon-border">
                             <input
                                 type="text"
@@ -366,7 +366,7 @@ const CallHistoryPage: React.FC = () => {
                             )}
                         </div>
                     </aside>
-                    <main className="w-2/3 p-6 flex flex-col">
+                    <main className="w-full md:w-2/3 p-6 flex flex-col">
                         {selectedCall ? (
                             <>
                                 <div className="flex-shrink-0 mb-4">
@@ -442,7 +442,7 @@ const CallHistoryPage: React.FC = () => {
                     <audio ref={failToneRef} preload="auto"><source src={SOUND_SOURCES.FAIL_TONE[0].src} type={SOUND_SOURCES.FAIL_TONE[0].type} /></audio>
                     <audio ref={bgAmbienceRef} loop preload="auto"><source src={SOUND_SOURCES.BG_AMBIENCE[0].src} type={SOUND_SOURCES.BG_AMBIENCE[0].type} /></audio>
 
-                    <div className="w-full max-w-6xl h-[85vh] grid grid-cols-2 gap-8">
+                    <div className="w-full max-w-6xl h-[85vh] grid grid-cols-1 lg:grid-cols-2 gap-8">
                         <div className="flex items-center justify-center">
                             {/* iPhone Mockup */}
                              <div className="relative h-[700px] w-[340px] bg-black rounded-[2.5rem] border-[10px] border-black overflow-hidden shadow-2xl">
