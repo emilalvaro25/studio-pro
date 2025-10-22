@@ -161,39 +161,17 @@ const HistoryTranscriptView: React.FC<{
 
 const CallHistoryPage: React.FC = () => {
     // --- Combined State ---
-    const [isSimulating, setIsSimulating] = useState(false);
+    const { 
+        callHistory, selectedAgent, addCallToHistory, addNotification, supabase, isDemoMode, 
+        startInSimulationMode, setStartInSimulationMode 
+    } = useAppContext();
+    const [isSimulating, setIsSimulating] = useState(startInSimulationMode);
     
     // --- History View State ---
-    const { callHistory, selectedAgent, addCallToHistory, addNotification, supabase, isDemoMode } = useAppContext();
     const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [playbackTime, setPlaybackTime] = useState(0); // in ms
     const audioRef = useRef<HTMLAudioElement>(null);
-
-
-    const sortedAndFilteredHistory = useMemo(() => {
-        return [...callHistory]
-            .sort((a, b) => b.startTime - a.startTime)
-            .filter(call => call.agentName.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [callHistory, searchTerm]);
-    
-    useEffect(() => {
-        if (!isSimulating && sortedAndFilteredHistory.length > 0) {
-            const isSelectedCallVisible = sortedAndFilteredHistory.some(call => call.id === selectedCall?.id);
-            if (!selectedCall || !isSelectedCallVisible) {
-                setSelectedCall(sortedAndFilteredHistory[0]);
-            }
-        } else if (!isSimulating) {
-            setSelectedCall(null);
-        }
-    }, [sortedAndFilteredHistory, selectedCall, isSimulating]);
-    
-    useEffect(() => {
-        setPlaybackTime(0);
-        if (audioRef.current) {
-            audioRef.current.currentTime = 0;
-        }
-    }, [selectedCall]);
 
     // --- Simulation View State (from former Calls.tsx) ---
     const [callStatus, setCallStatus] = useState<'idle' | 'connecting' | 'connected' | 'ended'>('idle');
@@ -231,7 +209,39 @@ const CallHistoryPage: React.FC = () => {
     const uiAudioContextRef = useRef<AudioContext | null>(null);
     const uiMasterGainRef = useRef<GainNode | null>(null);
     
-    // --- Simulation Logic (from former Calls.tsx) ---
+    // --- History Logic ---
+    useEffect(() => {
+        if (startInSimulationMode) {
+            setIsSimulating(true);
+            setStartInSimulationMode(false); // Reset the flag
+        }
+    }, [startInSimulationMode, setStartInSimulationMode]);
+
+    const sortedAndFilteredHistory = useMemo(() => {
+        return [...callHistory]
+            .sort((a, b) => b.startTime - a.startTime)
+            .filter(call => call.agentName.toLowerCase().includes(searchTerm.toLowerCase()));
+    }, [callHistory, searchTerm]);
+    
+    useEffect(() => {
+        if (!isSimulating && sortedAndFilteredHistory.length > 0) {
+            const isSelectedCallVisible = sortedAndFilteredHistory.some(call => call.id === selectedCall?.id);
+            if (!selectedCall || !isSelectedCallVisible) {
+                setSelectedCall(sortedAndFilteredHistory[0]);
+            }
+        } else if (!isSimulating) {
+            setSelectedCall(null);
+        }
+    }, [sortedAndFilteredHistory, selectedCall, isSimulating]);
+    
+    useEffect(() => {
+        setPlaybackTime(0);
+        if (audioRef.current) {
+            audioRef.current.currentTime = 0;
+        }
+    }, [selectedCall]);
+
+    // --- Simulation Logic ---
     useEffect(() => { callStatusRef.current = callStatus; }, [callStatus]);
     useEffect(() => { liveTranscriptRef.current = liveTranscript; }, [liveTranscript]);
 
@@ -295,9 +305,257 @@ const CallHistoryPage: React.FC = () => {
             mediaRecorderRef.current.stop();
         }
     }, [addCallToHistory, callStartTime, selectedAgent, supabase, addNotification, isDemoMode]);
+
+    const ensureUiAudioContext = useCallback(() => {
+        if (!uiAudioContextRef.current) {
+            const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            uiAudioContextRef.current = ctx;
+            const masterGain = ctx.createGain();
+            masterGain.gain.value = 0.7; // Master volume for UI sounds
+            masterGain.connect(ctx.destination);
+            uiMasterGainRef.current = masterGain;
+        }
+        if (uiAudioContextRef.current.state === 'suspended') {
+            uiAudioContextRef.current.resume();
+        }
+        return uiAudioContextRef.current;
+    }, []);
+
+    const playTones = useCallback((frequencies: number[], { duration = 200, gain = 0.5, type = 'sine' }: { duration?: number, gain?: number, type?: OscillatorType }) => {
+        const ctx = ensureUiAudioContext();
+        if (!ctx || !uiMasterGainRef.current) return;
+        const mainGain = ctx.createGain();
+        mainGain.connect(uiMasterGainRef.current);
+        const t0 = ctx.currentTime;
+        const tEnd = t0 + duration / 1000;
+        mainGain.gain.setValueAtTime(0, t0);
+        mainGain.gain.linearRampToValueAtTime(gain, t0 + 0.01);
+        mainGain.gain.setValueAtTime(gain, tEnd - 0.02);
+        mainGain.gain.linearRampToValueAtTime(0, tEnd);
+        frequencies.forEach(freq => {
+            const osc = ctx.createOscillator();
+            osc.type = type;
+            osc.frequency.value = freq;
+            osc.connect(mainGain);
+            osc.start(t0);
+            osc.stop(tEnd + 0.01);
+        });
+    }, [ensureUiAudioContext]);
     
-    // ... all other simulation functions from Calls.tsx (playTones, connectToAgent, etc.) are pasted here ...
-    // Note: for brevity, only showing the newly added control flow functions. The rest of the simulation logic is identical to the former pages/Calls.tsx.
+    const playDtmfTone = useCallback((key: string) => { if (DTMF[key]) playTones(DTMF[key], { duration: 180, gain: 0.3 }) }, [playTones]);
+    
+    const stopRinging = useCallback(() => { if (ringToneRef.current && !ringToneRef.current.paused) { ringToneRef.current.pause(); ringToneRef.current.currentTime = 0; } }, []);
+    const startRinging = useCallback(() => { stopRinging(); ringToneRef.current?.play().catch(e => console.error("Ringtone failed to play:", e)); }, [stopRinging]);
+    const stopFailTone = useCallback(() => { if (failToneRef.current && !failToneRef.current.paused) { failToneRef.current.pause(); failToneRef.current.currentTime = 0; } }, []);
+    const playFailTone = useCallback(() => { stopFailTone(); failToneRef.current?.play().catch(e => console.error("Fail tone failed to play:", e)); }, [stopFailTone]);
+
+    const connectToAgent = useCallback(async (department: Department) => {
+        if (!selectedAgent || !process.env.API_KEY) {
+            addNotification('Agent not selected or API key is missing.', 'error');
+            setCallStatus('ended');
+            playFailTone();
+            return;
+        }
+
+        setCallStatus('connected');
+        setCallStartTime(Date.now());
+        addLiveTranscript({ speaker: 'System', text: `Connecting to ${department} department...` });
+        
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+            outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+            const inputCtx = inputAudioContextRef.current, outputCtx = outputAudioContextRef.current;
+
+            if (inputVisualizerRef.current && outputVisualizerRef.current) {
+                const inputCanvas = inputVisualizerRef.current, outputCanvas = outputVisualizerRef.current;
+                const inputCanvasCtx = inputCanvas.getContext('2d'), outputCanvasCtx = outputCanvas.getContext('2d');
+                inputAnalyserRef.current = inputCtx.createAnalyser(); inputAnalyserRef.current.fftSize = 256;
+                outputAnalyserRef.current = outputCtx.createAnalyser(); outputAnalyserRef.current.fftSize = 256;
+                const animate = () => {
+                    if (inputAnalyserRef.current && inputCanvasCtx) drawVisualizer(inputAnalyserRef.current, inputCanvasCtx, inputCanvas, '#fbbf24');
+                    if (outputAnalyserRef.current && outputCanvasCtx) drawVisualizer(outputAnalyserRef.current, outputCanvasCtx, outputCanvas, '#2dd4bf');
+                    animationFrameRef.current = requestAnimationFrame(animate);
+                };
+                animate();
+            }
+
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaStreamRef.current = stream;
+            
+            mediaRecorderRef.current = new MediaRecorder(stream);
+            mediaRecorderRef.current.ondataavailable = event => recordedChunksRef.current.push(event.data);
+            mediaRecorderRef.current.start();
+            
+            const sessionPromise = ai.live.connect({
+                model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+                callbacks: {
+                    onopen: () => {
+                        const source = inputCtx.createMediaStreamSource(stream);
+                        scriptProcessorRef.current = inputCtx.createScriptProcessor(4096, 1, 1);
+                        scriptProcessorRef.current.onaudioprocess = (audioProcessingEvent) => {
+                            if (isMuted) return;
+                            const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                            const pcmBlob: GenAIBlob = {
+                                data: encode(new Int16Array(inputData.map(f => f * 32768)).buffer as any),
+                                mimeType: 'audio/pcm;rate=16000',
+                            };
+                            sessionPromise.then(session => session.sendRealtimeInput({ media: pcmBlob }));
+                        };
+                        source.connect(scriptProcessorRef.current).connect(inputCtx.destination);
+                        if (inputAnalyserRef.current) source.connect(inputAnalyserRef.current);
+                    },
+                    onmessage: async (message: LiveServerMessage) => {
+                        const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+                        if (base64Audio) {
+                            nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx.currentTime);
+                            const audioBuffer = await decodeAudioData(decode(base64Audio), outputCtx, 24000, 1);
+                            const sourceNode = outputCtx.createBufferSource();
+                            sourceNode.buffer = audioBuffer;
+                            sourceNode.connect(outputCtx.destination);
+                            if (outputAnalyserRef.current) sourceNode.connect(outputAnalyserRef.current);
+                            sourceNode.addEventListener('ended', () => audioSourcesRef.current.delete(sourceNode));
+                            sourceNode.start(nextStartTimeRef.current);
+                            nextStartTimeRef.current += audioBuffer.duration;
+                            audioSourcesRef.current.add(sourceNode);
+                        }
+                        if (message.serverContent?.inputTranscription) addLiveTranscript({ speaker: 'You', text: message.serverContent.inputTranscription.text });
+                        if (message.serverContent?.outputTranscription) addLiveTranscript({ speaker: 'Agent', text: message.serverContent.outputTranscription.text });
+                        if (message.serverContent?.interrupted) {
+                            audioSourcesRef.current.forEach(s => { s.stop(); audioSourcesRef.current.delete(s); });
+                            nextStartTimeRef.current = 0;
+                        }
+                    },
+                    onerror: (e: ErrorEvent) => {
+                        console.error('Session error:', e);
+                        addLiveTranscript({ speaker: 'System', text: `Error: ${e.message}` });
+                        endCall();
+                    },
+                    onclose: () => console.log('Session closed'),
+                },
+                config: {
+                    responseModalities: [Modality.AUDIO],
+                    inputAudioTranscription: {}, outputAudioTranscription: {},
+                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAP[selectedAgent.voice] || 'Kore' }}},
+                    systemInstruction: getDepartmentalPrompt(department, selectedAgent.name, 'Turkish Airlines', selectedAgent.voiceDescription),
+                },
+            });
+            sessionRef.current = await sessionPromise;
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'An unknown error occurred.';
+            addNotification(`Failed to connect: ${message}`, 'error');
+            addLiveTranscript({ speaker: 'System', text: `Failed to connect. Please check permissions and configuration.` });
+            setCallStatus('ended');
+            playFailTone();
+        }
+    }, [selectedAgent, addLiveTranscript, isMuted, playFailTone, endCall, addNotification]);
+
+    const playIvrPrompt = useCallback(async (text: string, onEnded?: () => void) => {
+        if (!process.env.API_KEY || !selectedAgent) {
+            addNotification('Cannot play IVR prompt: API key or agent missing.', 'error');
+            return;
+        }
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash-preview-tts", contents: [{ parts: [{ text }] }],
+                config: {
+                    responseModalities: [Modality.AUDIO],
+                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } }
+                }
+            });
+            const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+            if (base64Audio) {
+                if (!ivrAudioContextRef.current || ivrAudioContextRef.current.state === 'closed') ivrAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+                const audioCtx = ivrAudioContextRef.current;
+                const audioBuffer = await decodeAudioData(decode(base64Audio), audioCtx, 24000, 1);
+                const source = audioCtx.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioCtx.destination);
+                source.start();
+                if (onEnded) source.onended = onEnded;
+            }
+        } catch (error) {
+            console.error("IVR prompt failed:", error);
+            addNotification('Failed to generate IVR audio prompt.', 'error');
+            if (onEnded) onEnded();
+        }
+    }, [selectedAgent, addNotification]);
+    
+    const executeIvrState = useCallback((state: IvrState) => {
+        if (callStatusRef.current !== 'connecting') return;
+        const config = IVR_CONFIG[state as keyof typeof IVR_CONFIG];
+        if (config) {
+            const promptText = typeof config.prompt === 'function' ? config.prompt(selectedAgent?.name || 'Customer Service') : config.prompt;
+            playIvrPrompt(promptText, () => {
+               clearTimeout(ivrTimeoutRef.current as number);
+               ivrTimeoutRef.current = window.setTimeout(() => {
+                   playIvrPrompt("I'm sorry, I didn't get a response. Please call back later. Goodbye.", endCall);
+               }, config.timeout);
+            });
+        }
+    }, [selectedAgent, playIvrPrompt, endCall]);
+
+    const handleIvrKeyPress = (key: string) => {
+        if (ivrState !== 'language_select' && ivrState !== 'main_menu') return;
+        playDtmfTone(key);
+        setDialedNumber(prev => prev + key);
+        clearTimeout(ivrTimeoutRef.current as number);
+        const config = IVR_CONFIG[ivrState];
+        const result = config.handleKeyPress(key);
+        if (result) {
+            if (result.nextState === 'routing' && result.department) {
+                setIvrState('routing');
+                playIvrPrompt(`Connecting you to the ${result.department} department. Please hold.`, () => {
+                    setTimeout(() => connectToAgent(result.department as Department), 1000);
+                });
+            } else {
+                 setIvrState(result.nextState);
+            }
+        } else {
+            playIvrPrompt("I'm sorry, that's not a valid option. Please try again.", () => executeIvrState(ivrState));
+        }
+    };
+    
+    useEffect(() => {
+        if (callStatus === 'connecting' && (ivrState === 'language_select' || ivrState === 'main_menu')) {
+            executeIvrState(ivrState);
+        }
+        return () => clearTimeout(ivrTimeoutRef.current as number);
+    }, [ivrState, callStatus, executeIvrState]);
+
+    const startCall = async () => {
+        if (!selectedAgent || callStatusRef.current === 'connecting' || callStatusRef.current === 'connected') return;
+        setDialedNumber('');
+        setCallStatus('connecting');
+        setIvrState('ringing');
+        ensureUiAudioContext();
+        startRinging();
+        ivrTimeoutRef.current = window.setTimeout(() => {
+            if (callStatusRef.current === 'connecting') {
+                stopRinging();
+                setIvrState('language_select');
+            }
+        }, 8000);
+    };
+
+    const toggleHold = () => {
+        setIsHolding(prev => {
+            const holdMusic = holdMusicRef.current;
+            if (!holdMusic) return !prev;
+            const newIsHolding = !prev;
+            if (newIsHolding) {
+                holdMusic.play().catch(e => console.error("Hold music failed to play", e));
+                audioSourcesRef.current.forEach(source => source.stop());
+                audioSourcesRef.current.clear();
+                setIsMuted(true);
+            } else {
+                if (!holdMusic.paused) { holdMusic.pause(); holdMusic.currentTime = 0; }
+                setIsMuted(false);
+            }
+            return newIsHolding;
+        });
+    };
     
     const resetSimulation = () => {
         endCall();
@@ -310,7 +568,7 @@ const CallHistoryPage: React.FC = () => {
         setRecordedAudioUrl(null);
         setCallStartTime(null);
         recordedChunksRef.current = [];
-    }
+    };
 
     const handleStartSimulation = () => {
         if (!selectedAgent) {
@@ -326,109 +584,107 @@ const CallHistoryPage: React.FC = () => {
         setIsSimulating(false);
     };
 
-    // --- Render Functions ---
+    // Effect to clean up a call if the user navigates away or stops simulation
+    useEffect(() => {
+        return () => {
+            endCall();
+        };
+    }, [endCall]);
 
-    const renderHistoryView = () => {
-        return (
-            <div className="p-6 h-full flex flex-col">
-                <div className="flex justify-between items-center mb-6 flex-shrink-0">
-                    <h1 className="text-xl font-semibold text-text">Call History</h1>
-                    <button onClick={handleStartSimulation} className="flex items-center space-x-2 bg-primary text-white font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
-                        <Phone size={18} />
-                        <span>Start Simulation</span>
-                    </button>
-                </div>
-                <div className="flex-1 bg-surface border border-border rounded-xl flex overflow-hidden">
-                    <aside className="w-full md:w-1/3 border-r border-border flex-col md:flex hidden">
-                        <div className="p-4 border-b border-border">
-                            <div className="relative">
-                                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-                                <input
-                                    type="text"
-                                    placeholder="Search by agent name..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full bg-background border border-border rounded-lg pl-10 pr-3 py-1.5 focus:ring-2 focus:ring-primary focus:outline-none"
+
+    // --- Render Functions ---
+    const renderHistoryView = () => (
+        <div className="p-6 h-full flex flex-col">
+            <div className="flex justify-between items-center mb-6 flex-shrink-0">
+                <h1 className="text-xl font-semibold text-text">Call History</h1>
+                <button onClick={handleStartSimulation} className="flex items-center space-x-2 bg-primary text-white font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
+                    <Phone size={18} />
+                    <span>Start Simulation</span>
+                </button>
+            </div>
+            <div className="flex-1 bg-surface border border-border rounded-xl flex overflow-hidden">
+                <aside className="w-full md:w-1/3 border-r border-border flex-col md:flex hidden">
+                    <div className="p-4 border-b border-border">
+                        <div className="relative">
+                            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                            <input
+                                type="text"
+                                placeholder="Search by agent name..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full bg-background border border-border rounded-lg pl-10 pr-3 py-1.5 focus:ring-2 focus:ring-primary focus:outline-none"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto">
+                        {sortedAndFilteredHistory.length > 0 ? (
+                            sortedAndFilteredHistory.map(call => (
+                                <button
+                                    key={call.id}
+                                    onClick={() => setSelectedCall(call)}
+                                    className={`w-full text-left p-4 border-b border-border transition-colors ${selectedCall?.id === call.id ? 'bg-primary/10' : 'hover:bg-panel'}`}
+                                >
+                                    <p className={`font-semibold ${selectedCall?.id === call.id ? 'text-primary' : 'text-text'}`}>{call.agentName}</p>
+                                    <p className="text-xs text-subtle">{new Date(call.startTime).toLocaleString()}</p>
+                                    <p className="text-xs text-subtle">Duration: {formatDuration(call.duration)}</p>
+                                </button>
+                            ))
+                        ) : (
+                            <div className="p-4 text-center text-subtle">No call records found.</div>
+                        )}
+                    </div>
+                </aside>
+                <main className="w-full md:w-2/3 p-6 flex flex-col">
+                    {selectedCall ? (
+                        <>
+                            <div className="flex-shrink-0 mb-4">
+                                <h2 className="text-lg font-bold text-text">{selectedCall.agentName}</h2>
+                                <div className="flex items-center space-x-4 text-sm text-subtle mt-1">
+                                    <div className="flex items-center space-x-1.5"><PhoneIncoming size={14} /><span>{new Date(selectedCall.startTime).toLocaleString()}</span></div>
+                                    <div className="flex items-center space-x-1.5"><Clock size={14} /><span>{formatDuration(selectedCall.duration)}</span></div>
+                                </div>
+                            </div>
+                            <div className="flex-shrink-0 mb-4">
+                                <h3 className="text-sm font-semibold text-subtle mb-2">Call Recording</h3>
+                                <audio
+                                    ref={audioRef}
+                                    controls
+                                    key={selectedCall.id}
+                                    src={selectedCall.recordingUrl}
+                                    className="w-full h-10"
+                                    onTimeUpdate={() => {
+                                        if (audioRef.current) setPlaybackTime(audioRef.current.currentTime * 1000);
+                                    }}
+                                    onEnded={() => setPlaybackTime(selectedCall.duration)}
+                                    onPause={() => {
+                                        if (audioRef.current && !audioRef.current.ended) setPlaybackTime(audioRef.current.currentTime * 1000);
+                                    }}
+                                >
+                                    Your browser does not support the audio element.
+                                </audio>
+                            </div>
+                            <div className="flex-1 flex flex-col overflow-hidden">
+                                <h3 className="text-sm font-semibold text-subtle mb-2">Transcript</h3>
+                                <HistoryTranscriptView
+                                    transcript={selectedCall.transcript}
+                                    startTime={selectedCall.startTime}
+                                    playbackTime={playbackTime}
                                 />
                             </div>
+                        </>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-center text-subtle">
+                            <FileText size={48} className="mb-4" />
+                            <h2 className="text-lg font-semibold">No Call Selected</h2>
+                            <p>Select a call from the list to view its details.</p>
                         </div>
-                        <div className="flex-1 overflow-y-auto">
-                            {sortedAndFilteredHistory.length > 0 ? (
-                                sortedAndFilteredHistory.map(call => (
-                                    <button
-                                        key={call.id}
-                                        onClick={() => setSelectedCall(call)}
-                                        className={`w-full text-left p-4 border-b border-border transition-colors ${selectedCall?.id === call.id ? 'bg-primary/10' : 'hover:bg-panel'}`}
-                                    >
-                                        <p className={`font-semibold ${selectedCall?.id === call.id ? 'text-primary' : 'text-text'}`}>{call.agentName}</p>
-                                        <p className="text-xs text-subtle">{new Date(call.startTime).toLocaleString()}</p>
-                                        <p className="text-xs text-subtle">Duration: {formatDuration(call.duration)}</p>
-                                    </button>
-                                ))
-                            ) : (
-                                <div className="p-4 text-center text-subtle">No call records found.</div>
-                            )}
-                        </div>
-                    </aside>
-                    <main className="w-full md:w-2/3 p-6 flex flex-col">
-                        {selectedCall ? (
-                            <>
-                                <div className="flex-shrink-0 mb-4">
-                                    <h2 className="text-lg font-bold text-text">{selectedCall.agentName}</h2>
-                                    <div className="flex items-center space-x-4 text-sm text-subtle mt-1">
-                                        <div className="flex items-center space-x-1.5"><PhoneIncoming size={14} /><span>{new Date(selectedCall.startTime).toLocaleString()}</span></div>
-                                        <div className="flex items-center space-x-1.5"><Clock size={14} /><span>{formatDuration(selectedCall.duration)}</span></div>
-                                    </div>
-                                </div>
-                                <div className="flex-shrink-0 mb-4">
-                                    <h3 className="text-sm font-semibold text-subtle mb-2">Call Recording</h3>
-                                    <audio
-                                        ref={audioRef}
-                                        controls
-                                        key={selectedCall.id} // Re-mount component on call change
-                                        src={selectedCall.recordingUrl}
-                                        className="w-full h-10"
-                                        onTimeUpdate={() => {
-                                            if (audioRef.current) {
-                                                setPlaybackTime(audioRef.current.currentTime * 1000);
-                                            }
-                                        }}
-                                        onEnded={() => setPlaybackTime(0)}
-                                        onPause={() => {
-                                            if (audioRef.current && !audioRef.current.ended) {
-                                                setPlaybackTime(audioRef.current.currentTime * 1000);
-                                            }
-                                        }}
-                                    >
-                                        Your browser does not support the audio element.
-                                    </audio>
-                                </div>
-                                <div className="flex-1 flex flex-col overflow-hidden">
-                                    <h3 className="text-sm font-semibold text-subtle mb-2">Transcript</h3>
-                                    <HistoryTranscriptView
-                                        transcript={selectedCall.transcript}
-                                        startTime={selectedCall.startTime}
-                                        playbackTime={playbackTime}
-                                    />
-                                </div>
-                            </>
-                        ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-center text-subtle">
-                                <FileText size={48} className="mb-4" />
-                                <h2 className="text-lg font-semibold">No Call Selected</h2>
-                                <p>Select a call from the list to view its details.</p>
-                            </div>
-                        )}
-                    </main>
-                </div>
+                    )}
+                </main>
             </div>
-        );
-    };
+        </div>
+    );
 
     const renderSimulationView = () => {
-        // This function is too large to inline here, but it contains the entire render logic
-        // and functionality from the former pages/Calls.tsx file.
-        // The following is a placeholder for that logic.
         const SimulationTranscriptView: React.FC<{ transcript: TranscriptLine[] }> = ({ transcript }) => (
             <div aria-live="polite" className="h-full space-y-3 overflow-y-auto pr-2">
                 {transcript.map((line, i) => (
@@ -443,7 +699,6 @@ const CallHistoryPage: React.FC = () => {
             </div>
         );
 
-        // Identical dialpad keys as before
         const dialpadKeys = [
             { d: '1', s: '' }, { d: '2', s: 'ABC' }, { d: '3', s: 'DEF' },
             { d: '4', s: 'GHI' }, { d: '5', s: 'JKL' }, { d: '6', s: 'MNO' },
@@ -462,7 +717,6 @@ const CallHistoryPage: React.FC = () => {
                         <span>Back to Call History</span>
                     </button>
                 )}
-                {/* The rest of the JSX is the full layout from former Calls.tsx */}
                  <div className="flex-1 flex items-center justify-center">
                     <audio ref={holdMusicRef} loop preload="auto"><source src={SOUND_SOURCES.HOLD_MUSIC[0].src} type={SOUND_SOURCES.HOLD_MUSIC[0].type} /></audio>
                     <audio ref={ringToneRef} loop preload="auto"><source src={SOUND_SOURCES.RING_TONE[0].src} type={SOUND_SOURCES.RING_TONE[0].type} /></audio>
@@ -471,7 +725,6 @@ const CallHistoryPage: React.FC = () => {
 
                     <div className="w-full max-w-6xl h-[85vh] grid grid-cols-1 lg:grid-cols-2 gap-8">
                         <div className="flex items-center justify-center">
-                            {/* iPhone Mockup */}
                              <div className="relative h-[700px] w-[340px] bg-black rounded-[2.5rem] border-[10px] border-black overflow-hidden shadow-2xl">
                                 <div className="absolute top-0 left-1/2 -translate-x-1/2 h-7 w-36 bg-black rounded-b-xl z-10"></div>
                                 <div className="h-full w-full bg-surface rounded-[2rem] flex flex-col p-4">
@@ -488,19 +741,19 @@ const CallHistoryPage: React.FC = () => {
                                         <div className="flex flex-col items-center space-y-4">
                                             <div className="text-center h-10"><p className="text-3xl font-light tracking-widest">{dialedNumber || 'Dial Pad'}</p></div>
                                             <div className="grid grid-cols-3 gap-3">
-                                                {dialpadKeys.map(key => <DialpadKey key={key.d} digit={key.d} subtext={key.s} onClick={() => {}} />)}
+                                                {dialpadKeys.map(key => <DialpadKey key={key.d} digit={key.d} subtext={key.s} onClick={handleIvrKeyPress} />)}
                                             </div>
                                             <div className="flex items-center space-x-3 pt-2">
                                                  {callStatus === 'connected' ? (
                                                     <>
                                                         <DialerButton className={isMuted ? "bg-white/10" : "bg-panel"} onClick={() => setIsMuted(!isMuted)}>{isMuted ? <MicOff size={24}/> : <Mic size={24}/>}</DialerButton>
                                                         <DialerButton className="bg-danger/80 hover:bg-danger text-white" onClick={endCall} data-id="btn-end-call"><PhoneOff size={24} /></DialerButton>
-                                                        <DialerButton className={isHolding ? "bg-brand-gold text-surface" : "bg-panel"} onClick={() => {}}>{isHolding ? <PlayIcon size={24}/> : <Pause size={24}/>}</DialerButton>
+                                                        <DialerButton className={isHolding ? "bg-brand-gold text-surface" : "bg-panel"} onClick={toggleHold}>{isHolding ? <PlayIcon size={24}/> : <Pause size={24}/>}</DialerButton>
                                                     </>
                                                  ) : (
                                                     <>
                                                         <div className="w-16 h-16" />
-                                                        <DialerButton className="bg-ok/80 hover:bg-ok text-white" onClick={() => {}} disabled={callStatus !== 'idle' && callStatus !== 'ended'} data-id="btn-start-call"><Phone size={24} /></DialerButton>
+                                                        <DialerButton className="bg-ok/80 hover:bg-ok text-white" onClick={startCall} disabled={callStatus !== 'idle' && callStatus !== 'ended'} data-id="btn-start-call"><Phone size={24} /></DialerButton>
                                                         <div className="w-16 h-16" />
                                                     </>
                                                  )}

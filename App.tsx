@@ -171,6 +171,8 @@ interface AppContextType {
   deleteKnowledgeBase: (kb: KnowledgeBase) => Promise<void>;
   supabase: SupabaseClient | null;
   isDemoMode: boolean;
+  startInSimulationMode: boolean;
+  setStartInSimulationMode: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -445,6 +447,7 @@ const App: React.FC = () => {
     const [isLeftNavOpen, setIsLeftNavOpen] = useState(window.innerWidth > 1024);
     const [isRightPanelOpen, setIsRightPanelOpen] = useState(window.innerWidth > 1024);
     const [theme, rawSetTheme] = useState<Theme>(() => (localStorage.getItem('theme') as Theme) || 'dark');
+    const [startInSimulationMode, setStartInSimulationMode] = useState(false);
 
     const setTheme = (newTheme: Theme) => {
         rawSetTheme(newTheme);
@@ -600,6 +603,7 @@ const App: React.FC = () => {
 
     const handleStartTest = (agent: Agent) => {
         setSelectedAgent(agent);
+        setStartInSimulationMode(true);
         setView('Calls');
     };
 
@@ -835,8 +839,9 @@ const App: React.FC = () => {
         handleStartTest, versioningAgent, setVersioningAgent, saveAgentVersion, restoreAgentVersion,
         callHistory, addCallToHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent,
         cloneAgent, createAgent, isSupabaseConnected, isLeftNavOpen, setIsLeftNavOpen, isRightPanelOpen, setIsRightPanelOpen,
-        session, user, theme, setTheme, knowledgeBases, uploadKnowledgeFile, deleteKnowledgeBase, supabase, isDemoMode
-    }), [view, selectedAgent, agents, isQuickCreateOpen, versioningAgent, callHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent, cloneAgent, createAgent, isSupabaseConnected, isLeftNavOpen, isRightPanelOpen, session, user, theme, knowledgeBases, isDemoMode]);
+        session, user, theme, setTheme, knowledgeBases, uploadKnowledgeFile, deleteKnowledgeBase, supabase, isDemoMode,
+        startInSimulationMode, setStartInSimulationMode
+    }), [view, selectedAgent, agents, isQuickCreateOpen, versioningAgent, callHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent, cloneAgent, createAgent, isSupabaseConnected, isLeftNavOpen, isRightPanelOpen, session, user, theme, knowledgeBases, isDemoMode, startInSimulationMode]);
 
     const renderView = () => {
         switch (view) {
