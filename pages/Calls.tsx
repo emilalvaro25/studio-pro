@@ -1,0 +1,185 @@
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Phone, Mic, MicOff, Volume2, User, Bot, Clock } from 'lucide-react';
+import { GoogleGenAI, LiveSession, LiveServerMessage, Modality, Blob } from '@google/genai';
+import { decode, encode, decodeAudioData } from '../services/audioUtils';
+import { TranscriptLine } from '../types';
+
+const DialerButton: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void }> = ({ children, className, onClick }) => (
+    <button onClick={onClick} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${className}`}>
+        {children}
+    </button>
+);
+
+const CallsPage: React.FC = () => {
+    const [callStatus, setCallStatus] = useState<'idle' | 'connecting' | 'connected' | 'ended'>('idle');
+    const [isMuted, setIsMuted] = useState(false);
+    const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
+    
+    const sessionRef = useRef<LiveSession | null>(null);
+    const inputAudioContextRef = useRef<AudioContext | null>(null);
+    const outputAudioContextRef = useRef<AudioContext | null>(null);
+    const mediaStreamRef = useRef<MediaStream | null>(null);
+    const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+    const nextStartTimeRef = useRef<number>(0);
+    const audioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+
+    const addTranscriptLine = (speaker: 'You' | 'Agent' | 'System', text: string) => {
+        setTranscript(prev => [...prev, { speaker, text, timestamp: Date.now() }]);
+    };
+    
+    const handleConnect = useCallback(async () => {
+        if (callStatus !== 'idle' && callStatus !== 'ended') return;
+
+        setCallStatus('connecting');
+        addTranscriptLine('System', 'Connecting...');
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaStreamRef.current = stream;
+
+            if (!process.env.API_KEY) {
+              addTranscriptLine('System', 'API_KEY environment variable not set.');
+              setCallStatus('ended');
+              return;
+            }
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+            // Fix: Use `(window as any).webkitAudioContext` for TypeScript compatibility.
+            inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+            outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+
+            const sessionPromise = ai.live.connect({
+                model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+                callbacks: {
+                    onopen: () => {
+                        setCallStatus('connected');
+                        addTranscriptLine('System', 'Connected. You can start talking.');
+
+                        if (!inputAudioContextRef.current || !mediaStreamRef.current) return;
+                        const source = inputAudioContextRef.current.createMediaStreamSource(mediaStreamRef.current);
+                        scriptProcessorRef.current = inputAudioContextRef.current.createScriptProcessor(4096, 1, 1);
+                        
+                        scriptProcessorRef.current.onaudioprocess = (audioProcessingEvent) => {
+                            if (isMuted) return;
+                            const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                            const pcmBlob: Blob = {
+                                data: encode(new Uint8Array(new Int16Array(inputData.map(x => x * 32768)).buffer)),
+                                mimeType: 'audio/pcm;rate=16000',
+                            };
+                            sessionPromise.then(session => session.sendRealtimeInput({ media: pcmBlob }));
+                        };
+                        
+                        source.connect(scriptProcessorRef.current);
+                        scriptProcessorRef.current.connect(inputAudioContextRef.current.destination);
+                    },
+                    onmessage: async (message: LiveServerMessage) => {
+                        if (message.serverContent?.modelTurn?.parts[0]?.inlineData?.data) {
+                            const audioData = message.serverContent.modelTurn.parts[0].inlineData.data;
+                            if (outputAudioContextRef.current) {
+                                nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputAudioContextRef.current.currentTime);
+                                const audioBuffer = await decodeAudioData(decode(audioData), outputAudioContextRef.current, 24000, 1);
+                                const source = outputAudioContextRef.current.createBufferSource();
+                                source.buffer = audioBuffer;
+                                source.connect(outputAudioContextRef.current.destination);
+                                source.start(nextStartTimeRef.current);
+                                nextStartTimeRef.current += audioBuffer.duration;
+                                audioSourcesRef.current.add(source);
+                                source.onended = () => audioSourcesRef.current.delete(source);
+                            }
+                        }
+                        if (message.serverContent?.interrupted) {
+                            for (const source of audioSourcesRef.current) {
+                                source.stop();
+                            }
+                            audioSourcesRef.current.clear();
+                            nextStartTimeRef.current = 0;
+                        }
+
+                        if(message.serverContent?.inputTranscription?.text){
+                            addTranscriptLine('You', message.serverContent.inputTranscription.text);
+                        }
+                        if(message.serverContent?.outputTranscription?.text){
+                            addTranscriptLine('Agent', message.serverContent.outputTranscription.text);
+                        }
+                    },
+                    onerror: (e: ErrorEvent) => {
+                        console.error('Session error:', e);
+                        addTranscriptLine('System', `Error: ${e.message}`);
+                        handleEndCall();
+                    },
+                    onclose: () => {
+                         addTranscriptLine('System', 'Session closed.');
+                    },
+                },
+                config: {
+                    responseModalities: [Modality.AUDIO],
+                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
+                    systemInstruction: 'You are a helpful and friendly assistant.',
+                    inputAudioTranscription: {},
+                    outputAudioTranscription: {},
+                }
+            });
+
+            sessionRef.current = await sessionPromise;
+        } catch (error) {
+            console.error('Failed to start call:', error);
+            addTranscriptLine('System', 'Failed to start call. Check permissions and console.');
+            setCallStatus('ended');
+        }
+    }, [callStatus, isMuted]);
+
+    const handleEndCall = () => {
+        sessionRef.current?.close();
+        sessionRef.current = null;
+        
+        mediaStreamRef.current?.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
+
+        scriptProcessorRef.current?.disconnect();
+        scriptProcessorRef.current = null;
+
+        inputAudioContextRef.current?.close();
+        outputAudioContextRef.current?.close();
+
+        setCallStatus('ended');
+        addTranscriptLine('System', 'Call ended.');
+    };
+    
+    const toggleMute = () => setIsMuted(prev => !prev);
+    
+    return (
+        <div className="p-6 flex flex-col h-full">
+            <h1 className="text-xl font-semibold text-eburon-text mb-4">Live Call Test</h1>
+            <div className="flex-1 bg-eburon-card border border-eburon-border rounded-xl p-4 flex flex-col space-y-4 overflow-hidden">
+                <div aria-live="polite" className="flex-1 space-y-3 overflow-y-auto pr-2">
+                    {transcript.map((line, i) => (
+                        <div key={i} className={`flex items-start gap-3 ${line.speaker === 'You' ? 'justify-end' : ''}`}>
+                             {line.speaker === 'Agent' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-teal flex items-center justify-center"><Bot size={18}/></div>}
+                             <div className={`p-3 rounded-lg max-w-lg ${line.speaker === 'You' ? 'bg-eburon-border' : 'bg-eburon-bg'} ${line.speaker === 'System' ? 'text-center w-full bg-transparent text-eburon-muted text-xs' : ''}`}>
+                                <p>{line.text}</p>
+                            </div>
+                            {line.speaker === 'You' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-eburon-border flex items-center justify-center"><User size={18}/></div>}
+                        </div>
+                    ))}
+                </div>
+                 <div className="flex-shrink-0 flex justify-center items-center space-x-6 p-4">
+                    <DialerButton className="bg-eburon-muted/20 text-eburon-muted"><Volume2 size={32}/></DialerButton>
+                     {callStatus === 'idle' || callStatus === 'ended' ? (
+                        <DialerButton className="bg-ok/80 hover:bg-ok text-white" onClick={handleConnect}>
+                            <Phone size={32}/>
+                        </DialerButton>
+                     ) : (
+                        <DialerButton className="bg-danger/80 hover:bg-danger text-white" onClick={handleEndCall}>
+                            <Phone size={32}/>
+                        </DialerButton>
+                     )}
+                    <DialerButton className="bg-eburon-muted/20 text-eburon-muted" onClick={toggleMute}>
+                        {isMuted ? <MicOff size={32}/> : <Mic size={32}/>}
+                    </DialerButton>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default CallsPage;

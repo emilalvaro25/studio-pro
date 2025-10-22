@@ -1,0 +1,7 @@
+{
+  "name": "Eburon CSR Studio",
+  "description": "A VAPI-like Contact Center Studio focused on speed and user-friendliness. Create, test, and deploy conversational AI agents in just a few clicks, powered by Gemini.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
