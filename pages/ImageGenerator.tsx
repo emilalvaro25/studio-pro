@@ -2,15 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { decode, decodeAudioData } from '../services/audioUtils';
 import { useAppContext } from '../App';
-import { Play, Loader2, Save, User, Brain, Voicemail, Library, TestTube, Phone, CheckSquare, Square } from 'lucide-react';
+// FIX: Import Volume2 icon
+import { Play, Loader2, Save, User, Brain, Voicemail, Library, TestTube, Phone, CheckSquare, Square, Pause, Volume2 } from 'lucide-react';
 import { Agent, AgentTool } from '../types';
 
 const voices = [
-    { name: 'Natural Warm', prebuilt: 'Kore' },
-    { name: 'Professional Male', prebuilt: 'Puck' },
-    { name: 'Upbeat Female', prebuilt: 'Zephyr' },
-    { name: 'Calm Narrator', prebuilt: 'Charon' },
-    { name: 'Friendly', prebuilt: 'Fenrir' },
+    { name: 'Natural Warm', prebuilt: 'Kore', description: 'Friendly and engaging.' },
+    { name: 'Professional Male', prebuilt: 'Puck', description: 'Clear and authoritative.' },
+    { name: 'Upbeat Female', prebuilt: 'Zephyr', description: 'Energetic and positive.' },
+    { name: 'Calm Narrator', prebuilt: 'Charon', description: 'Soothing and narrative.' },
+    { name: 'Friendly', prebuilt: 'Fenrir', description: 'A pleasant and approachable tone.' },
 ];
 
 const ALL_TOOLS: AgentTool[] = ['Knowledge', 'Webhook', 'Calendar', 'Payments'];
@@ -43,8 +44,8 @@ const AgentBuilderPage: React.FC = () => {
     
     const [speakingRate, setSpeakingRate] = useState(1.0);
     const [bargeIn, setBargeIn] = useState(true);
-    const [playingVoice, setPlayingVoice] = useState<boolean>(false);
-    const [loadingVoice, setLoadingVoice] = useState<boolean>(false);
+    const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+    const [loadingVoice, setLoadingVoice] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -68,6 +69,10 @@ const AgentBuilderPage: React.FC = () => {
         setFormData(prev => prev ? { ...prev, [name]: value } : null);
     };
 
+    const handleVoiceSelection = (voiceName: string) => {
+        setFormData(prev => prev ? { ...prev, voice: voiceName } : null);
+    };
+
     const handleToolToggle = (tool: AgentTool) => {
         setFormData(prev => {
             if (!prev) return null;
@@ -85,10 +90,10 @@ const AgentBuilderPage: React.FC = () => {
         setView('Agents');
     };
     
-    const playPreview = async () => {
+    const playPreview = async (voiceName: string, prebuiltVoice: string) => {
         if (loadingVoice || playingVoice) return;
-        
-        setLoadingVoice(true);
+    
+        setLoadingVoice(voiceName);
         setError(null);
 
         try {
@@ -100,17 +105,15 @@ const AgentBuilderPage: React.FC = () => {
             if (!process.env.API_KEY) {
                 throw new Error("Gemini API key not found. Please configure it in the settings.");
             }
-
-            const voicePrebuilt = voices.find(v => v.name === formData.voice)?.prebuilt || 'Kore';
             
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const response = await ai.models.generateContent({
                 model: "gemini-2.5-flash-preview-tts",
-                contents: [{ parts: [{ text: `This is a preview of the ${formData.voice} voice.` }] }],
+                contents: [{ parts: [{ text: `Hello, you're listening to a preview of my voice. I can adjust my speaking speed if you'd like.` }] }],
                 config: {
                     responseModalities: [Modality.AUDIO],
                     speechConfig: {
-                        voiceConfig: { prebuiltVoiceConfig: { voiceName: voicePrebuilt } },
+                        voiceConfig: { prebuiltVoiceConfig: { voiceName: prebuiltVoice } },
                     },
                 },
             });
@@ -124,9 +127,9 @@ const AgentBuilderPage: React.FC = () => {
                 source.playbackRate.value = speakingRate;
                 source.connect(outputAudioContext.destination);
                 source.start();
-                setPlayingVoice(true);
+                setPlayingVoice(voiceName);
                 source.onended = () => {
-                    setPlayingVoice(false);
+                    setPlayingVoice(null);
                     outputAudioContext.close();
                 };
             } else {
@@ -136,7 +139,7 @@ const AgentBuilderPage: React.FC = () => {
             console.error("Voice preview error:", e);
             setError(e instanceof Error ? e.message : "An unknown error occurred during preview.");
         } finally {
-            setLoadingVoice(false);
+            setLoadingVoice(null);
         }
     };
     
@@ -194,28 +197,56 @@ const AgentBuilderPage: React.FC = () => {
                 </div>
             );
             case 'Voice': return (
-                 <div className="space-y-6 max-w-sm">
+                <div className="space-y-6 max-w-lg">
                     {error && <div className="text-danger text-sm bg-danger/10 border border-danger/20 p-3 rounded-lg">{error}</div>}
+                    
                     <div>
-                        <label htmlFor="voice" className="block text-sm font-medium text-eburon-muted mb-2">Voice</label>
-                        <select id="voice" name="voice" value={formData.voice} onChange={handleInputChange} className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none">
-                            {voices.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
-                        </select>
+                        <label className="block text-sm font-medium text-eburon-muted mb-2">Voice</label>
+                        <div className="space-y-3">
+                            {voices.map((voice) => (
+                                <div 
+                                    key={voice.name}
+                                    onClick={() => handleVoiceSelection(voice.name)}
+                                    className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                                        formData.voice === voice.name 
+                                        ? 'border-brand-teal bg-brand-teal/10' 
+                                        : 'border-eburon-border hover:border-eburon-muted/50'
+                                    }`}
+                                >
+                                    <div>
+                                        <h4 className="font-medium text-eburon-text">{voice.name}</h4>
+                                        <p className="text-xs text-eburon-muted">{voice.description}</p>
+                                    </div>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            playPreview(voice.name, voice.prebuilt);
+                                        }}
+                                        disabled={!!loadingVoice || !!playingVoice}
+                                        className="w-10 h-10 rounded-full bg-eburon-border hover:bg-brand-teal flex items-center justify-center transition-colors text-eburon-muted hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                        aria-label={`Preview ${voice.name} voice`}
+                                    >
+                                        {loadingVoice === voice.name ? (
+                                            <Loader2 size={20} className="animate-spin" />
+                                        ) : (
+                                            playingVoice === voice.name ? <Volume2 size={20} className="text-brand-teal" /> : <Play size={20} />
+                                        )}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
                     </div>
+
                     <div>
                         <label className="block text-sm font-medium text-eburon-muted mb-2">Speaking Rate ({speakingRate.toFixed(1)}x)</label>
                         <input type="range" min="0.5" max="1.5" step="0.1" value={speakingRate} onChange={e => setSpeakingRate(parseFloat(e.target.value))} className="w-full h-2 bg-eburon-border rounded-lg appearance-none cursor-pointer accent-brand-teal" />
                     </div>
-                     <div className="flex items-center space-x-2 pt-2 cursor-help" title="Allows the user to interrupt the agent's speech.">
+                    <div className="flex items-center space-x-2 pt-2 cursor-help" title="Allows the user to interrupt the agent's speech.">
                          <button onClick={() => setBargeIn(!bargeIn)} className="flex items-center space-x-3 text-left">
                             {bargeIn ? <CheckSquare size={18} className="text-brand-teal"/> : <Square size={18} className="text-eburon-muted"/>}
                          </button>
                         <label htmlFor="barge-in" className="text-sm text-eburon-text">Allow barge-in (interruptions)</label>
                     </div>
-                    <button onClick={playPreview} disabled={loadingVoice || playingVoice} className="flex items-center space-x-2 bg-eburon-border text-eburon-text font-semibold px-4 py-2 rounded-lg hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                        {loadingVoice ? <Loader2 className="animate-spin" size={18} /> : <Play size={18} />}
-                        <span>{loadingVoice ? 'Generating...' : (playingVoice ? 'Playing...' : 'Preview')}</span>
-                    </button>
                 </div>
             );
              case 'Knowledge': return (
