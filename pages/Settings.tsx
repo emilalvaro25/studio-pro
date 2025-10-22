@@ -46,14 +46,6 @@ const SettingsPage: React.FC = () => {
                     </div>
                 </div>
                 <div className="bg-surface border border-border rounded-xl p-6">
-                    <h2 className="text-lg font-semibold mb-4">Supabase Credentials</h2>
-                    <p className="text-sm text-subtle mb-4">Your Supabase project details are configured via environment variables for security.</p>
-                    <div className="space-y-4">
-                        <InputField label="Supabase Project URL" value="Configured via environment variable" onChange={() => {}} disabled />
-                        <InputField label="Supabase Anon Key" value="Configured via environment variable" onChange={() => {}} isSecret disabled />
-                    </div>
-                </div>
-                <div className="bg-surface border border-border rounded-xl p-6">
                     <h2 className="text-lg font-semibold mb-4">Configuration</h2>
                      <div className="space-y-4">
                         <div>

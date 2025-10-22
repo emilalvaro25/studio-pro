@@ -1,4 +1,3 @@
-
 import React, { useState, createContext, useContext, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { createClient, SupabaseClient, Session, User } from '@supabase/supabase-js';
 import { Header } from './components/Header';
@@ -27,7 +26,7 @@ const AgentVersionsModal = lazy(() => import('./components/AgentVersionsModal'))
 // --- Supabase Client Helper ---
 const getSupabaseClient = (): SupabaseClient | null => {
     const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_ANON_KEY;
+    const key = process.env.SUPABASE_KEY; // Updated from SUPABASE_ANON_KEY
     if (url && key) {
         return createClient(url, key);
     }
@@ -777,7 +776,7 @@ const App: React.FC = () => {
         isLeftNavOpen, setIsLeftNavOpen,
         isRightPanelOpen, setIsRightPanelOpen,
         session, user, theme, setTheme
-    }), [view, selectedAgent, agents, isQuickCreateOpen, versioningAgent, callHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent, cloneAgent, isSupabaseConnected, isLeftNavOpen, isRightPanelOpen, session, user, theme]);
+    }), [view, selectedAgent, agents, isQuickCreateOpen, versioningAgent, callHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent, cloneAgent, createAgent, isSupabaseConnected, isLeftNavOpen, isRightPanelOpen, session, user, theme]);
 
     const renderView = () => {
         switch (view) {

@@ -84,7 +84,7 @@ CREATE POLICY "Allow public read access to call history" ON call_history FOR SEL
 CREATE TABLE knowledge_bases (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     source_name TEXT NOT NULL, -- e.g., "Airlines FAQ.pdf"
-    storage_path TEXT NOT NULL, -- e.g., "public/knowledge_files/airlines_faq.pdf"
+    storage_path TEXT NOT NULL, -- e.g., "studio/knowledge_files/airlines_faq.pdf"
     chunks INT,
     status kb_status DEFAULT 'Indexing...',
     created_at TIMESTAMPTZ DEFAULT now(),
@@ -108,14 +108,14 @@ CREATE POLICY "Allow public read access to KB links" ON agent_knowledge_links FO
 
 -- 7. Recommendations for Supabase Storage setup (to be done in the Supabase Dashboard)
 --
---  a. Create a bucket named 'call_recordings' for storing audio files from calls.
---     - Consider making it a private bucket if recordings are sensitive.
---     - Set up storage policies to allow your application to upload files and generate
---       time-limited signed URLs for playback.
+--  a. Create one public bucket named 'studio'.
 --
---  b. Create a bucket named 'knowledge_files' for storing uploaded knowledge documents.
---     - This can be a public or private bucket depending on the sensitivity of the data.
---     - Set up storage policies for upload and download access.
+--  b. Inside the 'studio' bucket, your application will create and manage folders.
+--     - A 'call_recordings' folder will be used for storing audio files from calls.
+--     - A 'knowledge_files' folder will be used for uploaded knowledge documents.
+--
+--  c. Ensure the bucket policies are set for public read access if you want recordings
+--     and documents to be easily accessible via their URLs.
 
 -- End of schema.`;
 

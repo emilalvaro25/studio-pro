@@ -13,7 +13,7 @@ import {
 // --- Supabase Client Helper ---
 const getSupabaseClient = (): SupabaseClient | null => {
     const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_ANON_KEY;
+    const key = process.env.SUPABASE_KEY;
     if (url && key) {
         return createClient(url, key);
     }
@@ -222,7 +222,7 @@ const CallHistoryPage: React.FC = () => {
     
                     try {
                         const { error: uploadError } = await supabase.storage
-                            .from('call_recordings')
+                            .from('studio') // Use the 'studio' bucket
                             .upload(filePath, blob, {
                                 contentType: 'audio/webm',
                                 upsert: false,
@@ -231,7 +231,7 @@ const CallHistoryPage: React.FC = () => {
                         if (uploadError) throw uploadError;
     
                         const { data: urlData } = supabase.storage
-                            .from('call_recordings')
+                            .from('studio') // Use the 'studio' bucket
                             .getPublicUrl(filePath);
     
                         if (urlData.publicUrl) {
