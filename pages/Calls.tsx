@@ -405,9 +405,12 @@ const CallsPage: React.FC = () => {
                             const sourceNode = outputCtx.createBufferSource();
                             sourceNode.buffer = audioBuffer;
 
-                            const destination = outputAnalyserRef.current ? outputAnalyserRef.current : outputCtx.destination;
-                            sourceNode.connect(destination);
-                            if(outputAnalyserRef.current) outputAnalyserRef.current.connect(outputCtx.destination);
+                            // Connect to destination to make audio audible.
+                            sourceNode.connect(outputCtx.destination);
+                            // Also connect to the analyser for visualization, mirroring the input stream logic.
+                            if (outputAnalyserRef.current) {
+                                sourceNode.connect(outputAnalyserRef.current);
+                            }
                             
                             sourceNode.addEventListener('ended', () => audioSourcesRef.current.delete(sourceNode));
                             sourceNode.start(nextStartTimeRef.current);
