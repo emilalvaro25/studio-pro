@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Plus, MoreVertical, Play, Edit } from 'lucide-react';
 import { useAppContext } from '../App';
@@ -14,7 +13,13 @@ const StatusPill: React.FC<{ status: AgentStatus }> = ({ status }) => {
 };
 
 const AgentsListPage: React.FC = () => {
-    const { agents, setSelectedAgent } = useAppContext();
+    const { agents, setSelectedAgent, setIsQuickCreateOpen, setView } = useAppContext();
+
+    const handleEdit = (e: React.MouseEvent, agent: Agent) => {
+        e.stopPropagation();
+        setSelectedAgent(agent);
+        setView('AgentBuilder');
+    };
 
     return (
         <div className="p-6">
@@ -26,7 +31,7 @@ const AgentsListPage: React.FC = () => {
                         placeholder="Search agents..."
                         className="w-64 bg-eburon-card border border-eburon-border rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-brand-teal focus:outline-none"
                     />
-                    <button data-id="btn-new-agent" className="flex items-center space-x-2 bg-brand-teal text-eburon-bg font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
+                    <button onClick={() => setIsQuickCreateOpen(true)} data-id="btn-new-agent" className="flex items-center space-x-2 bg-brand-teal text-eburon-bg font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
                         <Plus size={18} />
                         <span>New Agent</span>
                     </button>
@@ -55,9 +60,9 @@ const AgentsListPage: React.FC = () => {
                                 <td className="p-4 text-eburon-muted">{agent.updatedAt}</td>
                                 <td className="p-4">
                                     <div className="flex items-center space-x-3 text-eburon-muted">
-                                        <button className="hover:text-brand-teal" title="Test"><Play size={18}/></button>
-                                        <button className="hover:text-brand-gold" title="Edit"><Edit size={18}/></button>
-                                        <button className="hover:text-eburon-text" title="More"><MoreVertical size={18}/></button>
+                                        <button className="hover:text-brand-teal" title="Test" onClick={(e) => e.stopPropagation()}><Play size={18}/></button>
+                                        <button onClick={(e) => handleEdit(e, agent)} className="hover:text-brand-gold" title="Edit"><Edit size={18}/></button>
+                                        <button className="hover:text-eburon-text" title="More" onClick={(e) => e.stopPropagation()}><MoreVertical size={18}/></button>
                                     </div>
                                 </td>
                             </tr>

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Plus, Upload, Phone, Send, Edit, Play } from 'lucide-react';
 import { useAppContext } from '../App';
@@ -21,12 +20,17 @@ const StatusPill: React.FC<{ status: AgentStatus }> = ({ status }) => {
 };
 
 const HomePage: React.FC = () => {
-  const { agents } = useAppContext();
+  const { agents, setIsQuickCreateOpen, setView, setSelectedAgent } = useAppContext();
+
+  const handleEdit = (agent: Agent) => {
+    setSelectedAgent(agent);
+    setView('AgentBuilder');
+  };
 
   return (
     <div className="p-6 space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <button className="p-4 bg-brand-teal/90 hover:bg-brand-teal text-white rounded-xl flex items-center justify-center space-x-2 transition-all">
+        <button onClick={() => setIsQuickCreateOpen(true)} className="p-4 bg-brand-teal/90 hover:bg-brand-teal text-white rounded-xl flex items-center justify-center space-x-2 transition-all">
           <Plus size={20} />
           <span className="font-semibold">New Agent</span>
         </button>
@@ -55,7 +59,7 @@ const HomePage: React.FC = () => {
                 </div>
                 <div className="flex items-center space-x-2">
                   <button className="text-eburon-muted hover:text-brand-teal"><Play size={16}/></button>
-                  <button className="text-eburon-muted hover:text-brand-gold"><Edit size={16}/></button>
+                  <button onClick={() => handleEdit(agent)} className="text-eburon-muted hover:text-brand-gold"><Edit size={16}/></button>
                 </div>
               </div>
             ))}
