@@ -3,7 +3,7 @@ import { useAppContext } from '../App';
 import { Plus, Copy, Rocket, Trash2 } from 'lucide-react';
 import type { Agent, AgentStatus } from '../types';
 
-type Tab = 'Actions' | 'Properties' | 'Logs';
+type Tab = 'Actions' | 'Properties';
 
 export const RightPanel: React.FC = () => {
   const { selectedAgent, agents, setSelectedAgent, setIsQuickCreateOpen, addNotification, cloneAgent, updateAgent, deleteAgent } = useAppContext();
@@ -88,21 +88,10 @@ export const RightPanel: React.FC = () => {
     </div>
   );
 
-  const renderLogs = () => (
-    <div className="text-xs font-mono text-eburon-muted space-y-1">
-        <p><span className="text-brand-teal">[INFO]</span> Initializing test call...</p>
-        <p><span className="text-brand-teal">[INFO]</span> Agent connected.</p>
-        <p><span className="text-warn">[WARN]</span> High latency detected: 230ms.</p>
-        <p><span className="text-ok">[OK]</span> Test call completed successfully.</p>
-    </div>
-  );
-
-
   const renderTabContent = () => {
       switch(activeTab) {
           case 'Actions': return renderQuickActions();
           case 'Properties': return renderProperties();
-          case 'Logs': return renderLogs();
           default: return null;
       }
   }
@@ -112,7 +101,7 @@ export const RightPanel: React.FC = () => {
       <h2 className="text-lg font-semibold text-eburon-text">{selectedAgent.name}</h2>
       
       <div className="flex border-b border-eburon-border">
-          {(['Properties', 'Actions', 'Logs'] as Tab[]).map(tab => (
+          {(['Properties', 'Actions'] as Tab[]).map(tab => (
               <button key={tab} 
                 onClick={() => setActiveTab(tab)}
                 className={`px-3 py-2 text-sm transition-colors ${activeTab === tab ? 'text-brand-teal border-b-2 border-brand-teal' : 'text-eburon-muted hover:text-eburon-text'}`}>

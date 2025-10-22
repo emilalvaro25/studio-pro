@@ -5,18 +5,30 @@ const SettingsPage: React.FC = () => {
     const { addNotification } = useAppContext();
     const [supabaseUrl, setSupabaseUrl] = useState('');
     const [supabaseAnonKey, setSupabaseAnonKey] = useState('');
+    const [defaultRegion, setDefaultRegion] = useState('us-central1');
+    const [loggingLevel, setLoggingLevel] = useState(75);
+
 
     useEffect(() => {
         const storedUrl = localStorage.getItem('supabaseUrl') || 'https://gvpapymyndpxrlsbdvhi.supabase.co';
         const storedKey = localStorage.getItem('supabaseAnonKey') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2cGFweW15bmRweHJsc2JkdmhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjExNTk2NjMsImV4cCI6MjA3NjczNTY2M30.0mMnrD0Zbkai2ypfc3djkHSUVuT9Io4JS6vAmjM6pLA';
         setSupabaseUrl(storedUrl);
         setSupabaseAnonKey(storedKey);
+
+        const storedRegion = localStorage.getItem('defaultRegion') || 'us-central1';
+        setDefaultRegion(storedRegion);
+
+        const storedLogging = localStorage.getItem('loggingLevel') || '75';
+        setLoggingLevel(parseInt(storedLogging, 10));
+
     }, []);
 
     const handleSave = () => {
         localStorage.setItem('supabaseUrl', supabaseUrl);
         localStorage.setItem('supabaseAnonKey', supabaseAnonKey);
-        addNotification('Supabase credentials saved. Please refresh the page for changes to take effect.', 'success');
+        localStorage.setItem('defaultRegion', defaultRegion);
+        localStorage.setItem('loggingLevel', String(loggingLevel));
+        addNotification('Settings saved successfully. Refresh might be needed for some changes.', 'success');
     };
 
     const InputField: React.FC<{ label: string; value: string; onChange: (value: string) => void; isSecret?: boolean; }> = ({ label, value, onChange, isSecret = false }) => (
@@ -48,18 +60,13 @@ const SettingsPage: React.FC = () => {
                         <InputField label="Supabase Project URL" value={supabaseUrl} onChange={setSupabaseUrl} />
                         <InputField label="Supabase Anon Key" value={supabaseAnonKey} onChange={setSupabaseAnonKey} isSecret />
                     </div>
-                    <div className="mt-6 flex justify-end">
-                        <button onClick={handleSave} className="px-4 py-2 rounded-lg bg-brand-teal text-eburon-bg font-semibold hover:opacity-90">
-                            Save Credentials
-                        </button>
-                    </div>
                 </div>
                 <div className="bg-eburon-card border border-eburon-border rounded-xl p-6">
                     <h2 className="text-lg font-semibold mb-4">Configuration</h2>
                      <div className="space-y-4">
                         <div>
                             <label className="block text-sm font-medium text-eburon-muted mb-1">Default Compute Region</label>
-                            <select className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none">
+                            <select value={defaultRegion} onChange={e => setDefaultRegion(e.target.value)} className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none">
                                 <option>us-central1</option>
                                 <option>europe-west1</option>
                                 <option>asia-east1</option>
@@ -67,7 +74,7 @@ const SettingsPage: React.FC = () => {
                         </div>
                          <div>
                             <label className="block text-sm font-medium text-eburon-muted mb-1">Logging & PII Redaction</label>
-                             <input type="range" min="0" max="100" defaultValue="75" className="w-full" />
+                             <input type="range" min="0" max="100" value={loggingLevel} onChange={e => setLoggingLevel(parseInt(e.target.value, 10))} className="w-full h-2 bg-eburon-border rounded-lg appearance-none cursor-pointer accent-brand-teal" />
                              <div className="flex justify-between text-xs text-eburon-muted">
                                  <span>None</span>
                                  <span>Standard</span>
@@ -75,6 +82,11 @@ const SettingsPage: React.FC = () => {
                              </div>
                         </div>
                     </div>
+                </div>
+                 <div className="flex justify-end">
+                    <button onClick={handleSave} className="px-6 py-2 rounded-lg bg-brand-teal text-eburon-bg font-semibold hover:opacity-90">
+                        Save All Settings
+                    </button>
                 </div>
             </div>
         </div>

@@ -160,6 +160,14 @@ const KnowledgePage: React.FC = () => {
             }, 3000);
         }
     };
+    
+    const handleDelete = (e: React.MouseEvent, kbId: number, kbSource: string) => {
+        e.stopPropagation();
+        if (window.confirm(`Are you sure you want to delete the knowledge base "${kbSource}"?`)) {
+            setKnowledgeBases(prev => prev.filter(kb => kb.id !== kbId));
+            addNotification(`Knowledge base "${kbSource}" deleted.`, 'success');
+        }
+    };
 
 
     return (
@@ -197,9 +205,9 @@ const KnowledgePage: React.FC = () => {
                                     <td className="p-4 text-eburon-muted">{kb.updated}</td>
                                     <td className="p-4">
                                         <div className="flex items-center space-x-3 text-eburon-muted">
-                                            <button className="hover:text-brand-teal" title="Re-index"><RefreshCw size={16}/></button>
-                                            <button className="hover:text-danger" title="Remove"><Trash2 size={16}/></button>
-                                            <button className="hover:text-eburon-text" title="More"><MoreVertical size={16}/></button>
+                                            <button className="hover:text-brand-teal" title="Re-index" onClick={(e) => e.stopPropagation()}><RefreshCw size={16}/></button>
+                                            <button onClick={(e) => handleDelete(e, kb.id, kb.source)} className="hover:text-danger" title="Remove"><Trash2 size={16}/></button>
+                                            <button className="hover:text-eburon-text" title="More" onClick={(e) => e.stopPropagation()}><MoreVertical size={16}/></button>
                                         </div>
                                     </td>
                                 </tr>

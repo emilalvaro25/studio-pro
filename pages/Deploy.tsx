@@ -20,14 +20,17 @@ const SnippetCard: React.FC<{ title: string; content: string; }> = ({ title, con
 };
 
 const DeployPage: React.FC = () => {
-    const { agents, selectedAgent } = useAppContext();
+    const { agents, selectedAgent, handleStartTest } = useAppContext();
     const [selectedAgentId, setSelectedAgentId] = useState(selectedAgent?.id || (agents[0]?.id || ''));
 
     const currentAgent = agents.find(a => a.id === selectedAgentId);
-    const agentSlug = currentAgent ? currentAgent.name.toLowerCase().replace(/\s+/g, '-') : 'select-an-agent';
-    const userIdPlaceholder = '[YOUR_USER_ID]'; // Generic placeholder for the user ID
-    const deploymentSlug = `${agentSlug}-${userIdPlaceholder}`;
+    const deploymentSlug = currentAgent ? currentAgent.id : 'select-an-agent';
 
+    const handleTestEndpoint = () => {
+        if (currentAgent) {
+            handleStartTest(currentAgent);
+        }
+    };
 
     return (
         <div className="p-6">
@@ -62,10 +65,13 @@ const DeployPage: React.FC = () => {
                     <div className="space-y-4">
                         <SnippetCard title="HTTPS POST" content={`https://api.eburon.studio/v1/calls/${deploymentSlug}`} />
                         <SnippetCard title="SIP URI" content={`sip:${deploymentSlug}@eburon.studio`} />
-                        <SnippetCard title="WebRTC Widget" content={`<EburonCallWidget agent="${deploymentSlug}" />`} />
+                        <SnippetCard title="WebRTC Widget" content={`<EburonCallWidget agentId="${deploymentSlug}" />`} />
                     </div>
                 </div>
-                <button className="w-full flex items-center justify-center space-x-2 bg-eburon-border text-eburon-text font-semibold px-4 py-2 rounded-lg hover:bg-white/10 transition-colors">
+                <button 
+                    onClick={handleTestEndpoint} 
+                    disabled={!currentAgent}
+                    className="w-full flex items-center justify-center space-x-2 bg-eburon-border text-eburon-text font-semibold px-4 py-2 rounded-lg hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     <TestTube2 size={18} />
                     <span>Test Endpoint</span>
                 </button>

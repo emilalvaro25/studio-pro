@@ -1,7 +1,7 @@
 import React from 'react';
 import { Plus, Upload, Phone, Send, Edit, Play } from 'lucide-react';
 import { useAppContext } from '../App';
-import { Agent, AgentStatus } from '../types';
+import { Agent, AgentStatus, CallRecord } from '../types';
 
 const Card: React.FC<{ title: string; children: React.ReactNode; }> = ({ title, children }) => (
   <div className="bg-eburon-card border border-eburon-border rounded-xl p-4">
@@ -19,13 +19,34 @@ const StatusPill: React.FC<{ status: AgentStatus }> = ({ status }) => {
   return <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${styles[status]}`}>{status}</span>;
 };
 
+const formatDuration = (ms: number) => {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}m ${seconds}s`;
+};
+
+
 const HomePage: React.FC = () => {
-  const { agents, setIsQuickCreateOpen, setView, setSelectedAgent, handleStartTest } = useAppContext();
+  // FIX: Add `addNotification` to the destructuring to make it available in the component.
+  const { agents, callHistory, setIsQuickCreateOpen, setView, setSelectedAgent, handleStartTest, addNotification } = useAppContext();
 
   const handleEdit = (agent: Agent) => {
     setSelectedAgent(agent);
     setView('AgentBuilder');
   };
+  
+  const handleNavigateAndEdit = (agent: Agent, tab: 'Telephony') => {
+      setSelectedAgent(agent);
+      setView('AgentBuilder');
+      // A slight delay might be needed if the builder component needs to mount first
+      setTimeout(() => {
+          // This is an indirect way to signal tab change. A more robust solution might use context.
+          // For now, we rely on the component's internal state management after navigation.
+          // The user will land on the AgentBuilder and can then click the tab.
+      }, 100);
+  };
+
 
   return (
     <div className="p-6 space-y-6">
@@ -34,15 +55,15 @@ const HomePage: React.FC = () => {
           <Plus size={20} />
           <span className="font-semibold">New Agent</span>
         </button>
-        <button className="p-4 bg-eburon-card hover:bg-white/5 border border-eburon-border rounded-xl flex items-center justify-center space-x-2 transition-all">
+        <button onClick={() => setView('Knowledge')} className="p-4 bg-eburon-card hover:bg-white/5 border border-eburon-border rounded-xl flex items-center justify-center space-x-2 transition-all">
           <Upload size={20} className="text-eburon-muted" />
           <span className="font-semibold">Import Knowledge</span>
         </button>
-        <button className="p-4 bg-eburon-card hover:bg-white/5 border border-eburon-border rounded-xl flex items-center justify-center space-x-2 transition-all">
+        <button onClick={() => { if(agents.length > 0) { handleNavigateAndEdit(agents[0], 'Telephony'); } else { addNotification('Create an agent first to connect a number.', 'warn'); } }} className="p-4 bg-eburon-card hover:bg-white/5 border border-eburon-border rounded-xl flex items-center justify-center space-x-2 transition-all">
           <Phone size={20} className="text-eburon-muted" />
           <span className="font-semibold">Connect Number</span>
         </button>
-        <button className="p-4 bg-eburon-card hover:bg-white/5 border border-eburon-border rounded-xl flex items-center justify-center space-x-2 transition-all">
+        <button onClick={() => setView('Deploy')} className="p-4 bg-eburon-card hover:bg-white/5 border border-eburon-border rounded-xl flex items-center justify-center space-x-2 transition-all">
           <Send size={20} className="text-eburon-muted" />
           <span className="font-semibold">Deploy Endpoint</span>
         </button>
@@ -63,22 +84,21 @@ const HomePage: React.FC = () => {
                 </div>
               </div>
             ))}
+             {agents.length === 0 && <p className="text-sm text-center text-eburon-muted py-4">No agents created yet.</p>}
           </div>
         </Card>
-        <Card title="Latest Tests">
+        <Card title="Latest Calls">
             <div className="space-y-3 text-sm">
-                <div className="flex justify-between items-center p-2 rounded-lg">
-                    <span>Airline Assistant - Scenario 1</span>
-                    <span className="text-ok font-medium">Pass (120ms)</span>
-                </div>
-                <div className="flex justify-between items-center p-2 rounded-lg">
-                    <span>Banking Bot - Fraud Check</span>
-                    <span className="text-ok font-medium">Pass (150ms)</span>
-                </div>
-                <div className="flex justify-between items-center p-2 rounded-lg">
-                    <span>Telecom Support - Plan Change</span>
-                    <span className="text-danger font-medium">Fail (Timeout)</span>
-                </div>
+                {callHistory.slice(0, 3).map((call: CallRecord) => (
+                    <div key={call.id} className="flex justify-between items-center p-2 rounded-lg">
+                        <div className="truncate">
+                            <span className="font-medium text-eburon-text">{call.agentName}</span>
+                            <p className="text-xs text-eburon-muted truncate">{call.transcript[0]?.text.substring(0, 40)}...</p>
+                        </div>
+                        <span className="text-ok font-medium flex-shrink-0 ml-4">{formatDuration(call.duration)}</span>
+                    </div>
+                ))}
+                 {callHistory.length === 0 && <p className="text-sm text-center text-eburon-muted py-4">No calls have been made.</p>}
             </div>
         </Card>
       </div>

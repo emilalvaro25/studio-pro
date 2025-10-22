@@ -12,6 +12,12 @@ const voices = [
     { name: 'Jade', prebuilt: 'Charon', description: 'Serene, smooth, and narrative.' },
     { name: 'Peridot', prebuilt: 'Fenrir', description: 'A pleasant and approachable tone.' },
     { name: 'Diamond', prebuilt: 'Aoede', description: 'Clear, brilliant, and sophisticated.' },
+    { name: 'Orion', prebuilt: 'Orion', description: 'A calm, professional, and trustworthy voice.' },
+    { name: 'Lyra', prebuilt: 'Lyra', description: 'A youthful and energetic female voice.' },
+    { name: 'Calypso', prebuilt: 'Calypso', description: 'A mature and reassuring female voice.' },
+    { name: 'Helios', prebuilt: 'Helios', description: 'A mature and authoritative male voice.' },
+    { name: 'Echo', prebuilt: 'Echo', description: 'A neutral, standard male voice.' },
+    { name: 'Aura', prebuilt: 'Aura', description: 'A neutral, standard female voice.' },
 ];
 
 const ALL_TOOLS: AgentTool[] = ['Knowledge', 'Webhook', 'Calendar', 'Payments'];
@@ -97,7 +103,11 @@ const AgentBuilderPage: React.FC = () => {
     const [playingVoice, setPlayingVoice] = useState<string | null>(null);
     const [loadingVoice, setLoadingVoice] = useState<string | null>(null);
     
+    // Additional state for Brain and Telephony tabs
+    const [baseBehavior, setBaseBehavior] = useState<'CSR Helpful (default)' | 'Sales Focused' | 'Technical Support'>('CSR Helpful (default)');
+    const [safetyLevel, setSafetyLevel] = useState<'Mild' | 'Standard' | 'Strict'>('Standard');
     const [telephonyProvider, setTelephonyProvider] = useState<'Twilio' | 'Plivo' | null>('Twilio');
+
 
     useEffect(() => {
         if (selectedAgent) {
@@ -157,6 +167,8 @@ const AgentBuilderPage: React.FC = () => {
 
     const handleSave = async () => {
         if (!formData) return;
+        // Here you would also save other states like baseBehavior, safetyLevel, etc.
+        // For this example, we'll just focus on what's in formData
         const success = await updateAgent({ ...formData, updatedAt: 'Just now' });
         if(success) {
             addNotification(`${formData.name} saved successfully!`, 'success');
@@ -327,7 +339,7 @@ const AgentBuilderPage: React.FC = () => {
                  <div className="space-y-6 max-w-md">
                     <div>
                         <label className="block text-sm font-medium text-eburon-muted mb-2">Base Behavior</label>
-                        <select className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none">
+                        <select value={baseBehavior} onChange={e => setBaseBehavior(e.target.value as any)} className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none">
                            <option>CSR Helpful (default)</option>
                            <option>Sales Focused</option>
                            <option>Technical Support</option>
@@ -336,8 +348,8 @@ const AgentBuilderPage: React.FC = () => {
                      <div>
                         <label className="block text-sm font-medium text-eburon-muted mb-2">Safety</label>
                          <div className="flex space-x-2">
-                           {['Mild', 'Standard', 'Strict'].map(level => (
-                               <button key={level} className={`flex-1 p-2 text-sm rounded-lg border-2 transition-colors ${level === 'Standard' ? 'border-brand-teal bg-brand-teal/10' : 'border-eburon-border hover:border-eburon-muted'}`}>{level}</button>
+                           {(['Mild', 'Standard', 'Strict'] as typeof safetyLevel[]).map(level => (
+                               <button key={level} onClick={() => setSafetyLevel(level)} className={`flex-1 p-2 text-sm rounded-lg border-2 transition-colors ${safetyLevel === level ? 'border-brand-teal bg-brand-teal/10' : 'border-eburon-border hover:border-eburon-muted'}`}>{level}</button>
                            ))}
                         </div>
                     </div>

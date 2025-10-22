@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+// FIX: Import `useEffect` from react to resolve error.
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../App';
 import { CallRecord, TranscriptLine } from '../types';
 import { Bot, User, PhoneIncoming, Clock, FileText } from 'lucide-react';
@@ -26,11 +27,27 @@ const TranscriptView: React.FC<{ transcript: TranscriptLine[] }> = ({ transcript
 
 const CallHistoryPage: React.FC = () => {
     const { callHistory } = useAppContext();
-    const [selectedCall, setSelectedCall] = useState<CallRecord | null>(callHistory[0] || null);
+    const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
 
-    const sortedHistory = useMemo(() => {
-        return [...callHistory].sort((a, b) => b.startTime - a.startTime);
-    }, [callHistory]);
+    const sortedAndFilteredHistory = useMemo(() => {
+        return [...callHistory]
+            .sort((a, b) => b.startTime - a.startTime)
+            .filter(call => call.agentName.toLowerCase().includes(searchTerm.toLowerCase()));
+    }, [callHistory, searchTerm]);
+    
+    // Automatically select the first item in the filtered list if no call is selected
+    // or if the selected call is no longer in the filtered list
+    useEffect(() => {
+        if (sortedAndFilteredHistory.length > 0) {
+            const isSelectedCallVisible = sortedAndFilteredHistory.some(call => call.id === selectedCall?.id);
+            if (!selectedCall || !isSelectedCallVisible) {
+                setSelectedCall(sortedAndFilteredHistory[0]);
+            }
+        } else {
+            setSelectedCall(null);
+        }
+    }, [sortedAndFilteredHistory, selectedCall]);
 
     return (
         <div className="p-6 h-full flex flex-col">
@@ -41,12 +58,14 @@ const CallHistoryPage: React.FC = () => {
                         <input
                             type="text"
                             placeholder="Search by agent name..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full bg-eburon-bg border border-eburon-border rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-brand-teal focus:outline-none"
                         />
                     </div>
                     <div className="flex-1 overflow-y-auto">
-                        {sortedHistory.length > 0 ? (
-                            sortedHistory.map(call => (
+                        {sortedAndFilteredHistory.length > 0 ? (
+                            sortedAndFilteredHistory.map(call => (
                                 <button
                                     key={call.id}
                                     onClick={() => setSelectedCall(call)}

@@ -142,6 +142,7 @@ interface AppContextType {
   updateAgent: (agent: Agent) => Promise<boolean>;
   deleteAgent: (agentId: string) => Promise<void>;
   cloneAgent: (agent: Agent) => Promise<void>;
+  isSupabaseConnected: boolean;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -418,6 +419,7 @@ const App: React.FC = () => {
     const [newAgentName, setNewAgentName] = useState('');
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
 
     const removeNotification = useCallback((id: number) => {
         setNotifications(prev => prev.filter(n => n.id !== id));
@@ -438,9 +440,11 @@ const App: React.FC = () => {
             if (!supabase) {
                 addNotification('Supabase not configured. Using mock data.', 'warn');
                 setAgents(initialAgents);
+                setIsSupabaseConnected(false);
                 setIsLoading(false);
                 return;
             }
+            setIsSupabaseConnected(true);
 
             try {
                 // Fetch agents
@@ -683,6 +687,8 @@ const App: React.FC = () => {
                 language: 'Multilingual',
                 voice: 'Amber',
                 voiceDescription: voiceDescription,
+                // FIX: Add 'updatedAt' to satisfy the type requirement for agentToDb on new agent creation.
+                updatedAt: 'Just now',
                 personaShortText: `An AI assistant named ${newAgentName}.`,
                 persona: getDepartmentalPrompt('General', newAgentName, "the company", voiceDescription),
                 tools: [],
@@ -718,7 +724,8 @@ const App: React.FC = () => {
         callHistory, addCallToHistory,
         notifications, addNotification, removeNotification,
         updateAgent, deleteAgent, cloneAgent,
-    }), [view, selectedAgent, agents, isQuickCreateOpen, versioningAgent, callHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent, cloneAgent]);
+        isSupabaseConnected
+    }), [view, selectedAgent, agents, isQuickCreateOpen, versioningAgent, callHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent, cloneAgent, isSupabaseConnected]);
 
     const renderView = () => {
         switch (view) {

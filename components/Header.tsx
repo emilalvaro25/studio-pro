@@ -1,28 +1,17 @@
-
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Settings } from 'lucide-react';
+import { useAppContext } from '../App';
 
-type Status = 'Idle' | 'Ready' | 'Live' | 'Calling';
+type Status = 'Offline' | 'Live';
 const STATUS_STYLES: { [key in Status]: { text: string; color: string } } = {
-  Idle: { text: 'Idle', color: 'bg-eburon-muted' },
-  Ready: { text: 'Ready', color: 'bg-ok' },
+  Offline: { text: 'Offline', color: 'bg-danger' },
   Live: { text: 'Live', color: 'bg-brand-teal' },
-  Calling: { text: 'Calling...', color: 'bg-warn animate-pulse' },
 };
 
 
 export const Header: React.FC = () => {
-    const [status, setStatus] = useState<Status>('Idle');
-    
-    useEffect(() => {
-        // Mock status changes
-        const interval = setInterval(() => {
-            const statuses: Status[] = ['Idle', 'Ready', 'Live'];
-            setStatus(statuses[Math.floor(Math.random() * statuses.length)]);
-        }, 5000);
-        return () => clearInterval(interval);
-    }, []);
-
+    const { setView, isSupabaseConnected } = useAppContext();
+    const status: Status = isSupabaseConnected ? 'Live' : 'Offline';
     const currentStatus = STATUS_STYLES[status];
 
     return (
@@ -35,7 +24,7 @@ export const Header: React.FC = () => {
                 <div className={`w-2 h-2 rounded-full ${currentStatus.color}`}></div>
                 <span className="text-eburon-muted text-xs">{currentStatus.text}</span>
             </div>
-            <button className="text-eburon-muted hover:text-eburon-text transition-colors">
+            <button onClick={() => setView('Settings')} className="text-eburon-muted hover:text-eburon-text transition-colors">
                 <Settings size={20} />
             </button>
         </header>

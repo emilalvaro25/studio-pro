@@ -11,6 +11,12 @@ const voices = [
     { name: 'Jade', style: 'Serene, smooth, and narrative', prebuilt: 'Charon' },
     { name: 'Peridot', style: 'A pleasant and approachable tone', prebuilt: 'Fenrir' },
     { name: 'Diamond', style: 'Clear, brilliant, and sophisticated', prebuilt: 'Aoede' },
+    { name: 'Orion', style: 'A calm, professional, and trustworthy voice', prebuilt: 'Orion' },
+    { name: 'Lyra', style: 'A youthful and energetic female voice', prebuilt: 'Lyra' },
+    { name: 'Calypso', style: 'A mature and reassuring female voice', prebuilt: 'Calypso' },
+    { name: 'Helios', style: 'A mature and authoritative male voice', prebuilt: 'Helios' },
+    { name: 'Echo', style: 'A neutral, standard male voice', prebuilt: 'Echo' },
+    { name: 'Aura', style: 'A neutral, standard female voice', prebuilt: 'Aura' },
 ];
 
 const VoicesPage: React.FC = () => {
