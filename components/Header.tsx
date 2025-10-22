@@ -1,17 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Menu, PanelRight, User as UserIcon, LogOut, Sun, Moon } from 'lucide-react';
 import { useAppContext } from '../App';
-import { createClient } from '@supabase/supabase-js';
 import Tooltip from './Tooltip';
-
-const getSupabaseClient = () => {
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_KEY; // Use the correct environment variable
-    if (url && key) {
-        return createClient(url, key);
-    }
-    return null;
-}
 
 const ThemeToggle: React.FC = () => {
     const { theme, setTheme } = useAppContext();
@@ -31,13 +21,12 @@ const ThemeToggle: React.FC = () => {
 
 
 export const Header: React.FC = () => {
-    const { isSupabaseConnected, setIsLeftNavOpen, setIsRightPanelOpen, user, setView } = useAppContext();
+    const { isSupabaseConnected, setIsLeftNavOpen, setIsRightPanelOpen, user, setView, supabase } = useAppContext();
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const profileRef = useRef<HTMLDivElement>(null);
     const status = isSupabaseConnected ? 'Live' : 'Offline';
 
     const handleSignOut = async () => {
-        const supabase = getSupabaseClient();
         if (supabase) {
             await supabase.auth.signOut();
         }

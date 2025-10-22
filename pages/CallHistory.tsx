@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { SupabaseClient } from '@supabase/supabase-js';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob as GenAIBlob } from '@google/genai';
 import { decode, encode, decodeAudioData } from '../services/audioUtils';
 import { useAppContext } from '../App';
@@ -9,17 +9,6 @@ import {
     Bot, User, PhoneIncoming, Clock, FileText, Phone, PhoneOff, Mic, MicOff, Volume2, 
     Delete, Circle, Pause, Play as PlayIcon, ArrowLeft, Search 
 } from 'lucide-react';
-
-// --- Supabase Client Helper ---
-const getSupabaseClient = (): SupabaseClient | null => {
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_KEY;
-    if (url && key) {
-        return createClient(url, key);
-    }
-    return null;
-};
-
 
 // --- Constants and Helpers from former Calls.tsx ---
 const formatDuration = (ms: number) => {
@@ -175,7 +164,7 @@ const CallHistoryPage: React.FC = () => {
     const [isSimulating, setIsSimulating] = useState(false);
     
     // --- History View State ---
-    const { callHistory, selectedAgent, addCallToHistory, addNotification } = useAppContext();
+    const { callHistory, selectedAgent, addCallToHistory, addNotification, supabase } = useAppContext();
     const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [playbackTime, setPlaybackTime] = useState(0); // in ms
@@ -270,7 +259,6 @@ const CallHistoryPage: React.FC = () => {
             mediaRecorderRef.current.onstop = async () => {
                 const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
                 let finalRecordingUrl = URL.createObjectURL(blob);
-                const supabase = getSupabaseClient();
     
                 if (supabase && selectedAgent && callStartTime) {
                     const callId = `call_${Date.now()}`;
@@ -335,7 +323,7 @@ const CallHistoryPage: React.FC = () => {
             };
             mediaRecorderRef.current.stop();
         }
-    }, [addCallToHistory, callStartTime, selectedAgent, addNotification]);
+    }, [addCallToHistory, callStartTime, selectedAgent, supabase, addNotification]);
     
     // ... all other simulation functions from Calls.tsx (playTones, connectToAgent, etc.) are pasted here ...
     // Note: for brevity, only showing the newly added control flow functions. The rest of the simulation logic is identical to the former pages/Calls.tsx.

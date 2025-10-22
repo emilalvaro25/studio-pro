@@ -1,22 +1,14 @@
 import React, { useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { SupabaseClient } from '@supabase/supabase-js';
 import { NotificationType } from '../types';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 
-const getSupabaseClient = () => {
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_KEY; // Use the correct environment variable
-    if (url && key) {
-        return createClient(url, key);
-    }
-    return null;
-}
-
 interface AuthPageProps {
     addNotification: (message: string, type?: NotificationType) => void;
+    supabaseClient: SupabaseClient | null;
 }
 
-const AuthPage: React.FC<AuthPageProps> = ({ addNotification }) => {
+const AuthPage: React.FC<AuthPageProps> = ({ addNotification, supabaseClient }) => {
     const [authView, setAuthView] = useState<'signIn' | 'signUp' | 'forgotPassword'>('signIn');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -34,7 +26,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ addNotification }) => {
         }
 
         setLoading(true);
-        const supabase = getSupabaseClient();
+        const supabase = supabaseClient;
         if (!supabase) {
             addNotification('Supabase client not configured.', 'error');
             setLoading(false);
@@ -67,7 +59,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ addNotification }) => {
 
     const handleAnonymousSignIn = async () => {
         setLoading(true);
-        const supabase = getSupabaseClient();
+        const supabase = supabaseClient;
         if (!supabase) {
             addNotification('Supabase client not configured.', 'error');
             setLoading(false);

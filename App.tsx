@@ -23,15 +23,18 @@ const IntegrationsPage = lazy(() => import('./pages/Integrations'));
 const AgentVersionsModal = lazy(() => import('./components/AgentVersionsModal'));
 
 
-// --- Supabase Client Helper ---
+// --- Supabase Client Singleton ---
 const getSupabaseClient = (): SupabaseClient | null => {
     const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_KEY; // Updated from SUPABASE_ANON_KEY
+    const key = process.env.SUPABASE_KEY;
     if (url && key) {
         return createClient(url, key);
     }
+    console.warn("Supabase credentials not found in environment variables.");
     return null;
 };
+const supabase = getSupabaseClient();
+
 
 // --- Data Mapping Helpers ---
 const dbToAgent = (dbData: any): Omit<Agent, 'history'> => ({
@@ -167,6 +170,7 @@ interface AppContextType {
   knowledgeBases: KnowledgeBase[];
   uploadKnowledgeFile: (file: File) => Promise<void>;
   deleteKnowledgeBase: (kb: KnowledgeBase) => Promise<void>;
+  supabase: SupabaseClient | null;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -436,7 +440,7 @@ const App: React.FC = () => {
     const [newAgentName, setNewAgentName] = useState('');
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
+    const isSupabaseConnected = !!supabase;
     const [isLeftNavOpen, setIsLeftNavOpen] = useState(window.innerWidth > 1024);
     const [isRightPanelOpen, setIsRightPanelOpen] = useState(window.innerWidth > 1024);
     const [theme, rawSetTheme] = useState<Theme>(() => (localStorage.getItem('theme') as Theme) || 'dark');
@@ -464,7 +468,6 @@ const App: React.FC = () => {
     }, [removeNotification]);
 
     useEffect(() => {
-        const supabase = getSupabaseClient();
         if (supabase) {
             supabase.auth.getSession().then(({ data: { session } }) => {
                 setSession(session);
@@ -503,14 +506,11 @@ const App: React.FC = () => {
 
         const loadData = async () => {
             setIsLoading(true);
-            const supabase = getSupabaseClient();
             if (!supabase) {
                 addNotification('Supabase not configured.', 'warn');
-                setIsSupabaseConnected(false);
                 setIsLoading(false);
                 return;
             }
-            setIsSupabaseConnected(true);
 
             try {
                 // Fetch agents, KBs, and call history in parallel
@@ -572,7 +572,6 @@ const App: React.FC = () => {
     };
 
     const updateAgent = useCallback(async (agentToUpdate: Agent): Promise<boolean> => {
-        const supabase = getSupabaseClient();
         if (!supabase) {
             addNotification('Supabase not configured.', 'error');
             return false;
@@ -596,7 +595,6 @@ const App: React.FC = () => {
     }, [addNotification, selectedAgent?.id]);
     
     const deleteAgent = useCallback(async (agentId: string) => {
-        const supabase = getSupabaseClient();
         if (!supabase) {
             addNotification('Supabase not configured.', 'error');
             return;
@@ -620,7 +618,6 @@ const App: React.FC = () => {
     }, [addNotification, agents, selectedAgent?.id]);
     
     const cloneAgent = useCallback(async (agentToClone: Agent) => {
-        const supabase = getSupabaseClient();
         if (!supabase || !user) {
             addNotification('Supabase not configured or user not found.', 'error');
             return;
@@ -650,7 +647,6 @@ const App: React.FC = () => {
     }, [addNotification, user]);
 
     const saveAgentVersion = async (agentId: string, description: string, stateToSave: Agent) => {
-        const supabase = getSupabaseClient();
         if (!supabase) {
             addNotification('Supabase not configured.', 'error');
             return;
@@ -708,7 +704,6 @@ const App: React.FC = () => {
     };
 
     const addCallToHistory = async (call: CallRecord) => {
-        const supabase = getSupabaseClient();
         if (!supabase || !user) {
             addNotification('Supabase not configured. Call record not saved.', 'warn');
             return;
@@ -734,7 +729,6 @@ const App: React.FC = () => {
     };
 
     const createAgent = async (agentData: Omit<Agent, 'id' | 'history' | 'updatedAt' | 'status'>, fromTemplate = false) => {
-        const supabase = getSupabaseClient();
         if (!supabase || !user) {
             addNotification('Supabase not configured or user not found.', 'error');
             return;
@@ -768,7 +762,6 @@ const App: React.FC = () => {
     };
 
     const uploadKnowledgeFile = async (file: File) => {
-        const supabase = getSupabaseClient();
         if (!supabase || !user) {
             addNotification('Supabase not configured or user not found.', 'error');
             return;
@@ -816,7 +809,6 @@ const App: React.FC = () => {
     };
 
     const deleteKnowledgeBase = async (kb: KnowledgeBase) => {
-        const supabase = getSupabaseClient();
         if (!supabase) {
             addNotification('Supabase not configured.', 'error');
             return;
@@ -875,7 +867,8 @@ const App: React.FC = () => {
         isLeftNavOpen, setIsLeftNavOpen,
         isRightPanelOpen, setIsRightPanelOpen,
         session, user, theme, setTheme,
-        knowledgeBases, uploadKnowledgeFile, deleteKnowledgeBase
+        knowledgeBases, uploadKnowledgeFile, deleteKnowledgeBase,
+        supabase
     }), [view, selectedAgent, agents, isQuickCreateOpen, versioningAgent, callHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent, cloneAgent, createAgent, isSupabaseConnected, isLeftNavOpen, isRightPanelOpen, session, user, theme, knowledgeBases]);
 
     const renderView = () => {
@@ -912,7 +905,7 @@ const App: React.FC = () => {
                     <Loader2 size={48} className="animate-spin text-primary" />
                 </div>
             }>
-                <AuthPage addNotification={addNotification} />
+                <AuthPage addNotification={addNotification} supabaseClient={supabase} />
             </Suspense>
         );
     }
