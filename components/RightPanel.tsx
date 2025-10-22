@@ -1,12 +1,12 @@
-
 import React, { useState } from 'react';
 import { useAppContext } from '../App';
 import { Plus, Copy, Rocket, Trash2 } from 'lucide-react';
+import type { Agent, AgentStatus } from '../types';
 
 type Tab = 'Actions' | 'Properties' | 'Logs';
 
 export const RightPanel: React.FC = () => {
-  const { selectedAgent, view } = useAppContext();
+  const { selectedAgent, agents, setAgents, setSelectedAgent, setIsQuickCreateOpen } = useAppContext();
   const [activeTab, setActiveTab] = useState<Tab>('Properties');
   
   if (!selectedAgent) {
@@ -16,19 +16,45 @@ export const RightPanel: React.FC = () => {
       </aside>
     );
   }
+  
+  const handleClone = () => {
+    if (!selectedAgent) return;
+    const clonedAgent: Agent = {
+        ...selectedAgent,
+        id: String(Date.now()),
+        name: `${selectedAgent.name} - Clone`,
+        status: 'Draft',
+        updatedAt: 'Just now',
+    };
+    setAgents(prev => [clonedAgent, ...prev]);
+    setSelectedAgent(clonedAgent);
+  };
+
+  const handleMakeLive = () => {
+      if (!selectedAgent) return;
+      const updatedAgent = { ...selectedAgent, status: 'Live' as AgentStatus };
+      setAgents(prev => prev.map(a => a.id === selectedAgent.id ? updatedAgent : a));
+      setSelectedAgent(updatedAgent);
+  };
+
+  const handleDelete = () => {
+      if (!selectedAgent) return;
+      setAgents(prev => prev.filter(a => a.id !== selectedAgent.id));
+      setSelectedAgent(agents.length > 1 ? agents.find(a => a.id !== selectedAgent.id) || null : null);
+  };
 
   const renderQuickActions = () => (
     <div className="space-y-2">
-        <button className="flex items-center w-full p-2 rounded-lg bg-eburon-border hover:bg-white/10 transition-colors">
+        <button onClick={() => setIsQuickCreateOpen(true)} className="flex items-center w-full p-2 rounded-lg bg-eburon-border hover:bg-white/10 transition-colors">
             <Plus size={16} className="mr-2 text-brand-teal"/> New Agent
         </button>
-         <button className="flex items-center w-full p-2 rounded-lg bg-eburon-border hover:bg-white/10 transition-colors">
+         <button onClick={handleClone} className="flex items-center w-full p-2 rounded-lg bg-eburon-border hover:bg-white/10 transition-colors">
             <Copy size={16} className="mr-2 text-brand-gold"/> Clone Agent
         </button>
-         <button className="flex items-center w-full p-2 rounded-lg bg-eburon-border hover:bg-white/10 transition-colors">
+         <button onClick={handleMakeLive} className="flex items-center w-full p-2 rounded-lg bg-eburon-border hover:bg-white/10 transition-colors">
             <Rocket size={16} className="mr-2 text-ok"/> Make Live
         </button>
-         <button className="flex items-center w-full p-2 rounded-lg bg-eburon-border hover:bg-red-500/20 text-danger transition-colors">
+         <button onClick={handleDelete} className="flex items-center w-full p-2 rounded-lg bg-eburon-border hover:bg-red-500/20 text-danger transition-colors">
             <Trash2 size={16} className="mr-2"/> Delete Agent
         </button>
     </div>

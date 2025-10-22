@@ -3,6 +3,7 @@ import { Phone, Mic, MicOff, Volume2, User, Bot, Delete } from 'lucide-react';
 import { GoogleGenAI, LiveSession, LiveServerMessage, Modality, Blob } from '@google/genai';
 import { decode, encode, decodeAudioData } from '../services/audioUtils';
 import { TranscriptLine } from '../types';
+import { useAppContext } from '../App';
 
 const DialerButton: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void }> = ({ children, className, onClick }) => (
     <button onClick={onClick} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${className}`}>
@@ -40,8 +41,16 @@ const drawVisualizer = (
     }
 };
 
+const VOICE_MAP: { [key: string]: string } = {
+    'Natural Warm': 'Kore',
+    'Professional Male': 'Puck',
+    'Upbeat Female': 'Zephyr',
+    'Calm Narrator': 'Charon',
+    'Friendly': 'Fenrir'
+};
 
 const CallsPage: React.FC = () => {
+    const { selectedAgent } = useAppContext();
     const [callStatus, setCallStatus] = useState<'idle' | 'connecting' | 'connected' | 'ended'>('idle');
     const [isMuted, setIsMuted] = useState(false);
     const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
@@ -54,6 +63,7 @@ const CallsPage: React.FC = () => {
     const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
     const nextStartTimeRef = useRef<number>(0);
     const audioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+    const transcriptRef = useRef(transcript);
 
     const inputVisualizerRef = useRef<HTMLCanvasElement>(null);
     const outputVisualizerRef = useRef<HTMLCanvasElement>(null);
@@ -61,6 +71,9 @@ const CallsPage: React.FC = () => {
     const outputAnalyserRef = useRef<AnalyserNode | null>(null);
     const animationFrameRef = useRef<number>();
 
+    useEffect(() => {
+        transcriptRef.current = transcript;
+    }, [transcript]);
 
     const addTranscriptLine = (speaker: 'You' | 'Agent' | 'System', text: string) => {
         setTranscript(prev => [...prev, { speaker, text, timestamp: Date.now() }]);
@@ -94,9 +107,10 @@ const CallsPage: React.FC = () => {
     }, []);
     
     const handleConnect = useCallback(async () => {
-        if (callStatus !== 'idle' && callStatus !== 'ended') return;
+        if ((callStatus !== 'idle' && callStatus !== 'ended') || !selectedAgent) return;
 
         setCallStatus('connecting');
+        setTranscript([]);
         addTranscriptLine('System', 'Connecting...');
 
         try {
@@ -113,7 +127,6 @@ const CallsPage: React.FC = () => {
             inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
             outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
             
-            // Setup visualizers
             inputAnalyserRef.current = inputAudioContextRef.current.createAnalyser();
             inputAnalyserRef.current.fftSize = 256;
             outputAnalyserRef.current = outputAudioContextRef.current.createAnalyser();
@@ -163,33 +176,37 @@ const CallsPage: React.FC = () => {
                             }
                         }
                         if (message.serverContent?.interrupted) {
-                            for (const source of audioSourcesRef.current) {
-                                source.stop();
-                            }
+                            for (const source of audioSourcesRef.current) source.stop();
                             audioSourcesRef.current.clear();
                             nextStartTimeRef.current = 0;
                         }
 
-                        if(message.serverContent?.inputTranscription?.text){
-                            addTranscriptLine('You', message.serverContent.inputTranscription.text);
-                        }
-                        if(message.serverContent?.outputTranscription?.text){
-                            addTranscriptLine('Agent', message.serverContent.outputTranscription.text);
-                        }
+                        let updated = false;
+                        const currentTranscript = transcriptRef.current;
+                        const process = (transcription: { text: string } | undefined, speaker: 'You' | 'Agent') => {
+                            if (transcription?.text) {
+                                const last = currentTranscript[currentTranscript.length - 1];
+                                if (last?.speaker === speaker) last.text += transcription.text;
+                                else currentTranscript.push({ speaker, text: transcription.text, timestamp: Date.now() });
+                                updated = true;
+                            }
+                        };
+                        process(message.serverContent?.inputTranscription, 'You');
+                        process(message.serverContent?.outputTranscription, 'Agent');
+
+                        if (updated) setTranscript([...currentTranscript]);
                     },
                     onerror: (e: ErrorEvent) => {
                         console.error('Session error:', e);
                         addTranscriptLine('System', `Error: ${e.message}`);
                         handleEndCall();
                     },
-                    onclose: () => {
-                         addTranscriptLine('System', 'Session closed.');
-                    },
+                    onclose: () => addTranscriptLine('System', 'Session closed.'),
                 },
                 config: {
                     responseModalities: [Modality.AUDIO],
-                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
-                    systemInstruction: 'You are a helpful and friendly assistant.',
+                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAP[selectedAgent.voice] || 'Zephyr' } } },
+                    systemInstruction: selectedAgent.persona,
                     inputAudioTranscription: {},
                     outputAudioTranscription: {},
                 }
@@ -202,9 +219,9 @@ const CallsPage: React.FC = () => {
             setCallStatus('ended');
             stopVisualizers();
         }
-    }, [callStatus, isMuted, startVisualizers, stopVisualizers]);
+    }, [callStatus, isMuted, startVisualizers, stopVisualizers, selectedAgent]);
 
-    const handleEndCall = () => {
+    const handleEndCall = useCallback(() => {
         sessionRef.current?.close();
         sessionRef.current = null;
         
@@ -220,36 +237,41 @@ const CallsPage: React.FC = () => {
         stopVisualizers();
         setCallStatus('ended');
         addTranscriptLine('System', 'Call ended.');
-    };
+    }, [stopVisualizers]);
     
+    useEffect(() => {
+      return () => {
+        handleEndCall();
+      }
+    }, [handleEndCall]);
+
     const toggleMute = () => setIsMuted(prev => !prev);
     const handleDial = (digit: string) => setDialedNumber(prev => prev + digit);
     const handleDelete = () => setDialedNumber(prev => prev.slice(0, -1));
     const dialpadKeys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
 
+    if (!selectedAgent) {
+        return (
+            <div className="p-6 flex flex-col h-full items-center justify-center text-center">
+                <h1 className="text-xl font-semibold text-eburon-text mb-4">No Agent Selected</h1>
+                <p className="text-eburon-muted max-w-sm">Please select an agent from the Agents page or Home page to start a test call.</p>
+            </div>
+        );
+    }
+
     return (
         <div className="p-6 flex flex-col h-full">
-            <h1 className="text-xl font-semibold text-eburon-text mb-4">Live Call Test</h1>
+            <h1 className="text-xl font-semibold text-eburon-text mb-4">Live Call Test: <span className="text-brand-teal font-bold">{selectedAgent.name}</span></h1>
             <div className="flex-1 bg-eburon-card border border-eburon-border rounded-xl p-4 flex flex-col space-y-4 overflow-hidden">
-                <div className="flex-shrink-0 p-4 space-y-4">
+                <div className="flex-shrink-0 p-4">
                      <div className="h-10 text-center text-3xl font-light tracking-wider text-eburon-text">{dialedNumber || ' '}</div>
-                     <div className="flex justify-around items-center h-12">
-                         <div className="flex items-center space-x-2">
-                             <User size={16} className="text-brand-gold"/>
-                             <canvas ref={inputVisualizerRef} width="150" height="40" />
-                         </div>
-                         <div className="flex items-center space-x-2">
-                             <Bot size={16} className="text-brand-teal"/>
-                             <canvas ref={outputVisualizerRef} width="150" height="40" />
-                         </div>
-                     </div>
                 </div>
 
-                {callStatus === 'connected' ? (
+                {callStatus === 'connected' || callStatus === 'ended' || callStatus === 'connecting' ? (
                      <div aria-live="polite" className="flex-1 space-y-3 overflow-y-auto pr-2">
                         {transcript.map((line, i) => (
                             <div key={i} className={`flex items-start gap-3 ${line.speaker === 'You' ? 'justify-end' : ''}`}>
-                                 {line.speaker === 'Agent' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-teal flex items-center justify-center"><Bot size={18}/></div>}
+                                 {line.speaker === 'Agent' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-teal/20 text-brand-teal flex items-center justify-center"><Bot size={18}/></div>}
                                  <div className={`p-3 rounded-lg max-w-lg ${line.speaker === 'You' ? 'bg-eburon-border' : 'bg-eburon-bg'} ${line.speaker === 'System' ? 'text-center w-full bg-transparent text-eburon-muted text-xs' : ''}`}>
                                     <p>{line.text}</p>
                                 </div>
@@ -265,21 +287,32 @@ const CallsPage: React.FC = () => {
                     </div>
                 )}
                 
+                 <div className="flex-shrink-0 flex justify-around items-center w-full p-4 border-t border-eburon-border">
+                    <div className="text-center w-40">
+                        <canvas ref={inputVisualizerRef} width="150" height="40" />
+                        <p className="text-xs text-eburon-muted mt-1">Your Input</p>
+                    </div>
+                    
+                    <div className="flex justify-center items-center space-x-6">
+                        <DialerButton className="bg-eburon-muted/20 text-eburon-muted"><Volume2 size={32}/></DialerButton>
+                        {callStatus === 'idle' || callStatus === 'ended' ? (
+                            <DialerButton className="bg-ok/80 hover:bg-ok text-white" onClick={handleConnect}>
+                                <Phone size={32}/>
+                            </DialerButton>
+                        ) : (
+                            <DialerButton className="bg-danger/80 hover:bg-danger text-white" onClick={handleEndCall}>
+                                <Phone size={32}/>
+                            </DialerButton>
+                        )}
+                        <DialerButton className={`transition-colors ${isMuted ? 'bg-red-500/20 text-red-400' : 'bg-eburon-muted/20 text-eburon-muted'}`} onClick={toggleMute}>
+                            {isMuted ? <MicOff size={32}/> : <Mic size={32}/>}
+                        </DialerButton>
+                    </div>
 
-                 <div className="flex-shrink-0 flex justify-center items-center space-x-6 p-4">
-                    <DialerButton className="bg-eburon-muted/20 text-eburon-muted"><Volume2 size={32}/></DialerButton>
-                     {callStatus === 'idle' || callStatus === 'ended' ? (
-                        <DialerButton className="bg-ok/80 hover:bg-ok text-white" onClick={handleConnect}>
-                            <Phone size={32}/>
-                        </DialerButton>
-                     ) : (
-                        <DialerButton className="bg-danger/80 hover:bg-danger text-white" onClick={handleEndCall}>
-                            <Phone size={32}/>
-                        </DialerButton>
-                     )}
-                    <DialerButton className={`transition-colors ${isMuted ? 'bg-red-500/20 text-red-400' : 'bg-eburon-muted/20 text-eburon-muted'}`} onClick={toggleMute}>
-                        {isMuted ? <MicOff size={32}/> : <Mic size={32}/>}
-                    </DialerButton>
+                    <div className="text-center w-40">
+                        <canvas ref={outputVisualizerRef} width="150" height="40" />
+                        <p className="text-xs text-eburon-muted mt-1">Agent Output</p>
+                    </div>
                 </div>
             </div>
         </div>

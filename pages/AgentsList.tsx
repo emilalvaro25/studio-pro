@@ -13,13 +13,19 @@ const StatusPill: React.FC<{ status: AgentStatus }> = ({ status }) => {
 };
 
 const AgentsListPage: React.FC = () => {
-    const { agents, setSelectedAgent, setIsQuickCreateOpen, setView } = useAppContext();
+    const { agents, setSelectedAgent, setIsQuickCreateOpen, setView, handleStartTest } = useAppContext();
 
     const handleEdit = (e: React.MouseEvent, agent: Agent) => {
         e.stopPropagation();
         setSelectedAgent(agent);
         setView('AgentBuilder');
     };
+
+    const handleTest = (e: React.MouseEvent, agent: Agent) => {
+        e.stopPropagation();
+        handleStartTest(agent);
+    };
+
 
     return (
         <div className="p-6">
@@ -61,7 +67,7 @@ const AgentsListPage: React.FC = () => {
                                     <td className="p-4 text-eburon-muted">{agent.updatedAt}</td>
                                     <td className="p-4">
                                         <div className="flex items-center space-x-3 text-eburon-muted">
-                                            <button className="hover:text-brand-teal" title="Test" onClick={(e) => e.stopPropagation()}><Play size={18}/></button>
+                                            <button onClick={(e) => handleTest(e, agent)} className="hover:text-brand-teal" title="Test"><Play size={18}/></button>
                                             <button onClick={(e) => handleEdit(e, agent)} className="hover:text-brand-gold" title="Edit"><Edit size={18}/></button>
                                             <button className="hover:text-eburon-text" title="More" onClick={(e) => e.stopPropagation()}><MoreVertical size={18}/></button>
                                         </div>

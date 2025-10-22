@@ -20,7 +20,7 @@ const StatusPill: React.FC<{ status: AgentStatus }> = ({ status }) => {
 };
 
 const HomePage: React.FC = () => {
-  const { agents, setIsQuickCreateOpen, setView, setSelectedAgent } = useAppContext();
+  const { agents, setIsQuickCreateOpen, setView, setSelectedAgent, handleStartTest } = useAppContext();
 
   const handleEdit = (agent: Agent) => {
     setSelectedAgent(agent);
@@ -58,8 +58,8 @@ const HomePage: React.FC = () => {
                   <StatusPill status={agent.status} />
                 </div>
                 <div className="flex items-center space-x-2">
-                  <button className="text-eburon-muted hover:text-brand-teal"><Play size={16}/></button>
-                  <button onClick={() => handleEdit(agent)} className="text-eburon-muted hover:text-brand-gold"><Edit size={16}/></button>
+                  <button onClick={() => handleStartTest(agent)} className="text-eburon-muted hover:text-brand-teal" title="Test Agent"><Play size={16}/></button>
+                  <button onClick={() => handleEdit(agent)} className="text-eburon-muted hover:text-brand-gold" title="Edit Agent"><Edit size={16}/></button>
                 </div>
               </div>
             ))}

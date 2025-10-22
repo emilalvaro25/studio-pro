@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { decode, decodeAudioData } from '../services/audioUtils';
 import { useAppContext } from '../App';
-// FIX: Import Volume2 icon
-import { Play, Loader2, Save, User, Brain, Voicemail, Library, TestTube, Phone, CheckSquare, Square, Pause, Volume2 } from 'lucide-react';
+import { Play, Loader2, Save, User, Brain, Voicemail, Library, TestTube, Phone, CheckSquare, Square, Volume2 } from 'lucide-react';
 import { Agent, AgentTool } from '../types';
 
 const voices = [
@@ -37,7 +36,7 @@ const TabButton: React.FC<{
 
 
 const AgentBuilderPage: React.FC = () => {
-    const { selectedAgent, setView, agents, setAgents } = useAppContext();
+    const { selectedAgent, setView, agents, setAgents, handleStartTest } = useAppContext();
     const [activeTab, setActiveTab] = useState<BuilderTab>('Identity');
     
     const [formData, setFormData] = useState<Agent | null>(selectedAgent);
@@ -87,7 +86,7 @@ const AgentBuilderPage: React.FC = () => {
         if (!formData) return;
         const updatedAgents = agents.map(agent => agent.id === formData.id ? { ...formData, updatedAt: 'Just now' } : agent);
         setAgents(updatedAgents);
-        setView('Agents');
+        alert(`${formData.name} saved successfully!`);
     };
     
     const playPreview = async (voiceName: string, prebuiltVoice: string) => {
@@ -273,7 +272,7 @@ const AgentBuilderPage: React.FC = () => {
                     </div>
                     <h3 className="text-lg font-semibold">Test your agent</h3>
                     <p className="text-eburon-muted max-w-xs">Click the call button to start a live test session and interact with your agent in real-time.</p>
-                    <button className="flex items-center justify-center space-x-2 bg-ok text-white font-semibold px-6 py-3 rounded-lg hover:opacity-90 transition-opacity">
+                    <button onClick={() => handleStartTest(formData)} className="flex items-center justify-center space-x-2 bg-ok text-white font-semibold px-6 py-3 rounded-lg hover:opacity-90 transition-opacity">
                         <Phone size={18} />
                         <span>Start Test Call</span>
                     </button>
