@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { decode, decodeAudioData } from '../services/audioUtils';
-import { useAppContext } from '../App';
+import { useAppContext, createSystemPrompt } from '../App';
 import { Play, Loader2, Save, User, Brain, Voicemail, Library, TestTube, Phone, CheckSquare, Square, Volume2, X, History } from 'lucide-react';
 import { Agent, AgentTool } from '../types';
 
@@ -95,7 +95,18 @@ const AgentBuilderPage: React.FC = () => {
     
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => prev ? { ...prev, [name]: value } : null);
+        setFormData(prev => {
+            if (!prev) return null;
+            const updatedAgent = { ...prev, [name]: value };
+
+            if (name === 'name' || name === 'voiceDescription') {
+                 const companyMatch = prev.persona.match(/For a premium brand like (.*?),/);
+                 // A bit of a hack to infer company name for prompt regen, but works for the dummy data structure
+                 const companyName = companyMatch ? companyMatch[1] : (updatedAgent.name.includes("Airlines") ? "Global Airlines" : "the company");
+                 updatedAgent.persona = createSystemPrompt(updatedAgent.name, companyName, updatedAgent.voiceDescription);
+            }
+            return updatedAgent;
+        });
     };
 
     const handleVoiceSelection = (voiceName: string) => {
@@ -125,7 +136,7 @@ const AgentBuilderPage: React.FC = () => {
     };
     
     const playPreview = async (voiceName: string, prebuiltVoice: string) => {
-        if (loadingVoice || playingVoice) return;
+        if (loadingVoice || playingVoice || !formData) return;
     
         setLoadingVoice(voiceName);
         setError(null);
@@ -141,9 +152,11 @@ const AgentBuilderPage: React.FC = () => {
             }
             
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const textToSpeak = `Say it with this style: "${formData.voiceDescription}". Hello, you're listening to a preview of my voice. I can adjust my speaking speed if you'd like.`;
+
             const response = await ai.models.generateContent({
                 model: "gemini-2.5-flash-preview-tts",
-                contents: [{ parts: [{ text: `Hello, you're listening to a preview of my voice. I can adjust my speaking speed if you'd like.` }] }],
+                contents: [{ parts: [{ text: textToSpeak }] }],
                 config: {
                     responseModalities: [Modality.AUDIO],
                     speechConfig: {
@@ -242,8 +255,22 @@ const AgentBuilderPage: React.FC = () => {
                 <div className="space-y-6 max-w-lg">
                     {error && <div className="text-danger text-sm bg-danger/10 border border-danger/20 p-3 rounded-lg">{error}</div>}
                     
+                     <div>
+                        <label htmlFor="voiceDescription" className="block text-sm font-medium text-eburon-muted mb-2">Voice Description (Tone & Style)</label>
+                        <textarea
+                            id="voiceDescription"
+                            name="voiceDescription"
+                            rows={3}
+                            value={formData.voiceDescription}
+                            onChange={handleInputChange}
+                            className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none"
+                            placeholder="e.g., A warm, empathetic voice with a slightly slower pace. Sounds reassuring and patient."
+                        />
+                        <p className="text-xs text-eburon-muted mt-1">This description will be embedded in the prompt to enhance the selected voice's tone.</p>
+                    </div>
+
                     <div>
-                        <label className="block text-sm font-medium text-eburon-muted mb-2">Voice</label>
+                        <label className="block text-sm font-medium text-eburon-muted mb-2">Base Voice</label>
                         <div className="space-y-3">
                             {voices.map((voice) => (
                                 <div 

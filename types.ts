@@ -15,6 +15,7 @@ export interface AgentVersion {
   status: AgentStatus;
   language: string;
   voice: string;
+  voiceDescription: string;
   personaShortText: string;
   persona: string;
   tools: AgentTool[];
@@ -27,6 +28,7 @@ export interface Agent {
   status: AgentStatus;
   language: string;
   voice: string;
+  voiceDescription: string;
   updatedAt: string; // This will now reflect the last save/restore time
   personaShortText: string;
   persona: string;

@@ -8,6 +8,14 @@ import { TranscriptLine, CallRecord } from '../types';
 import { useAppContext } from '../App';
 import { getDepartmentalPrompt, Department } from '../App';
 
+// Sound effect URLs from highly reliable public domain sources to prevent loading errors.
+const BACKGROUND_AMBIENCE_URL = "https://cdn.pixabay.com/download/audio/2022/04/24/audio_398a6d4b2b.mp3";
+const HOLD_MUSIC_URL = "https://cdn.pixabay.com/download/audio/2022/05/23/audio_7313a17531.mp3";
+const KEYPAD_TONE_URL = "https://www.soundjay.com/phone/sounds/phone-touch-tone-1.mp3";
+const RINGING_TONE_URL = "https://www.soundjay.com/phone/sounds/telephone-ring-01a.wav";
+const FAIL_TONE_URL = "https://www.soundjay.com/phone/sounds/phone-busy-signal-1.mp3";
+
+
 const DialerButton: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void, 'data-id'?: string; disabled?: boolean }> = ({ children, className, onClick, 'data-id': dataId, disabled }) => (
     <button onClick={onClick} data-id={dataId} disabled={disabled} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${className} disabled:opacity-50 disabled:cursor-not-allowed`}>
         {children}
@@ -122,7 +130,6 @@ const CallsPage: React.FC = () => {
     const [isBgSoundActive, setIsBgSoundActive] = useState(false);
     const [callStartTime, setCallStartTime] = useState<number | null>(null);
     
-    // FIX: The LiveSession type is not exported from @google/genai. Use 'any' for the session object.
     const sessionRef = useRef<any | null>(null);
     const inputAudioContextRef = useRef<AudioContext | null>(null);
     const outputAudioContextRef = useRef<AudioContext | null>(null);
@@ -139,15 +146,18 @@ const CallsPage: React.FC = () => {
     const keypadToneRef = useRef<HTMLAudioElement | null>(null);
     const ringingToneRef = useRef<HTMLAudioElement | null>(null);
     const failToneRef = useRef<HTMLAudioElement | null>(null);
-    // FIX: The return type of `setTimeout` in the browser is `number`, not `NodeJS.Timeout`.
     const ivrTimeoutRef = useRef<number | null>(null);
+    const callStatusRef = useRef(callStatus);
 
     const inputVisualizerRef = useRef<HTMLCanvasElement | null>(null);
     const outputVisualizerRef = useRef<HTMLCanvasElement | null>(null);
     const inputAnalyserRef = useRef<AnalyserNode | null>(null);
     const outputAnalyserRef = useRef<AnalyserNode | null>(null);
-    // FIX: Initialize useRef with a value. useRef<number>() is invalid; it should be useRef<number | null>(null)
     const animationFrameRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        callStatusRef.current = callStatus;
+    }, [callStatus]);
 
     useEffect(() => {
         transcriptRef.current = transcript;
@@ -161,507 +171,507 @@ const CallsPage: React.FC = () => {
                 audioEl.play().catch(error => console.warn("Background audio playback failed:", error));
             } else {
                 audioEl.pause();
+                audioEl.currentTime = 0;
             }
         }
+        return () => {
+            audioEl?.pause();
+        };
     }, [isBgSoundActive]);
 
-    useEffect(() => {
-        const holdEl = holdMusicRef.current;
-        if (holdEl) {
-            if (isHolding) {
-                holdEl.play().catch(e => console.error("Error playing hold music:", e));
-            } else {
-                holdEl.pause();
-            }
-        }
-    }, [isHolding]);
 
-    const addTranscriptLine = (speaker: 'You' | 'Agent' | 'System', text: string) => {
-        setTranscript(prev => [...prev, { speaker, text, timestamp: Date.now() }]);
-    };
-
-    const startVisualizers = useCallback(() => {
-        const draw = () => {
-            if (inputAnalyserRef.current && inputVisualizerRef.current) {
-                const canvasCtx = inputVisualizerRef.current.getContext('2d');
-                if (canvasCtx) drawVisualizer(inputAnalyserRef.current, canvasCtx, inputVisualizerRef.current, '#f6c453');
-            }
-            if (outputAnalyserRef.current && outputVisualizerRef.current) {
-                const canvasCtx = outputVisualizerRef.current.getContext('2d');
-                if (canvasCtx) drawVisualizer(outputAnalyserRef.current, canvasCtx, outputVisualizerRef.current, '#19c2ff');
-            }
-            animationFrameRef.current = requestAnimationFrame(draw);
-        };
-        draw();
-    }, []);
-
-    const stopVisualizers = useCallback(() => {
-        if (animationFrameRef.current) {
-            cancelAnimationFrame(animationFrameRef.current);
-        }
-        [inputVisualizerRef, outputVisualizerRef].forEach(ref => {
-            if (ref.current) {
-                const canvasCtx = ref.current.getContext('2d');
-                canvasCtx?.clearRect(0, 0, ref.current.width, ref.current.height);
-            }
-        });
+    const addTranscript = useCallback((line: Omit<TranscriptLine, 'timestamp'>) => {
+        setTranscript(prev => [...prev, { ...line, timestamp: Date.now() }]);
     }, []);
     
-     const playIVRPrompt = useCallback(async (text: string): Promise<void> => {
-        return new Promise(async (resolve, reject) => {
-            addTranscriptLine('System', text);
-            if (!process.env.API_KEY) {
-                const msg = "API_KEY not set.";
-                addTranscriptLine('System', msg);
-                return reject(new Error(msg));
-            }
-            try {
-                const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-                const response = await ai.models.generateContent({
-                    model: "gemini-2.5-flash-preview-tts",
-                    contents: [{ parts: [{ text }] }],
-                    config: {
-                        responseModalities: [Modality.AUDIO],
-                        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
-                    },
-                });
 
-                const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-                if (base64Audio) {
-                    if (!ivrAudioContextRef.current) {
-                        ivrAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-                    }
-                    const audioCtx = ivrAudioContextRef.current;
-                    const audioBuffer = await decodeAudioData(decode(base64Audio), audioCtx, 24000, 1);
-                    const source = audioCtx.createBufferSource();
-                    source.buffer = audioBuffer;
-                    source.connect(audioCtx.destination);
-                    source.start();
-                    source.onended = () => resolve();
-                } else {
-                    reject(new Error("TTS API returned no audio data."));
-                }
-            } catch (error) {
-                console.error("Error generating IVR speech:", error);
-                addTranscriptLine('System', 'Could not generate IVR prompt.');
-                reject(error);
-            }
-        });
-    }, []);
-
-
-    const connectToGemini = useCallback(async (systemPrompt: string) => {
+    const startCall = async () => {
         if (!selectedAgent) return;
-        setIvrState('connected_to_agent');
+        setDialedNumber('');
+        setCallStatus('connecting');
+        setIvrState('ringing');
+        ringingToneRef.current?.play().catch(e => console.error("Ringing tone failed to play:", e));
+        
+        // Simulate ringing for a few seconds before "connecting"
+        setTimeout(() => {
+            const ringTone = ringingToneRef.current;
+            // FIX: Only pause if it's actually playing to avoid race conditions.
+            if (ringTone && !ringTone.paused) {
+                ringTone.pause();
+                ringTone.currentTime = 0;
+            }
 
+            // FIX: Only proceed if the call wasn't cancelled during ringing.
+            if (callStatusRef.current === 'connecting') {
+                setIvrState('language_select');
+            }
+        }, 3000);
+    };
+
+
+    const connectToAgent = useCallback(async (department: Department) => {
+        if (!selectedAgent || !process.env.API_KEY) {
+            console.error("Agent or API_KEY not selected.");
+            setCallStatus('ended');
+            const tone = failToneRef.current;
+            if (tone) {
+                tone.currentTime = 0;
+                tone.play().catch(e => console.error("Failed to play fail tone", e));
+            }
+            return;
+        }
+
+        setCallStatus('connected');
+        setCallStartTime(Date.now());
+        addTranscript({ speaker: 'System', text: `Connecting to ${department} department...` });
+        
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaStreamRef.current = stream;
-
-            // Start recorder
-            if (mediaStreamRef.current) {
-                mediaRecorderRef.current = new MediaRecorder(mediaStreamRef.current, { mimeType: 'audio/webm' });
-                mediaRecorderRef.current.ondataavailable = (event) => {
-                    if (event.data.size > 0) recordedChunksRef.current.push(event.data);
-                };
-                mediaRecorderRef.current.onstop = () => {
-                    const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
-                    const reader = new FileReader();
-                    reader.readAsDataURL(blob);
-                    reader.onloadend = () => {
-                        const dataUrl = reader.result as string;
-                        setRecordedAudioUrl(dataUrl);
-
-                        // Save the call to history with the persistent data URL
-                        const endTime = Date.now();
-                        const startTime = callStartTime || endTime;
-                        const newCall: CallRecord = {
-                            id: `call_${startTime}`,
-                            agentId: selectedAgent.id,
-                            agentName: selectedAgent.name,
-                            startTime: startTime,
-                            endTime: endTime,
-                            duration: endTime - startTime,
-                            transcript: transcriptRef.current,
-                            recordingUrl: dataUrl,
-                        };
-                        addCallToHistory(newCall);
-                    };
-                };
-                mediaRecorderRef.current.start();
-            }
-
-            if (!process.env.API_KEY) {
-                addTranscriptLine('System', 'API_KEY environment variable not set.');
-                setCallStatus('ended');
-                setIvrState('ended');
-                return;
-            }
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
+            
+            // Audio Contexts
             inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
             outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
             
-            inputAnalyserRef.current = inputAudioContextRef.current.createAnalyser();
-            inputAnalyserRef.current.fftSize = 256;
-            outputAnalyserRef.current = outputAudioContextRef.current.createAnalyser();
-            outputAnalyserRef.current.fftSize = 256;
+            // Visualizer setup
+            const inputCtx = inputAudioContextRef.current;
+            const outputCtx = outputAudioContextRef.current;
 
-            startVisualizers();
+            if (inputVisualizerRef.current && outputVisualizerRef.current) {
+                const inputCanvas = inputVisualizerRef.current;
+                const outputCanvas = outputVisualizerRef.current;
+                const inputCanvasCtx = inputCanvas.getContext('2d');
+                const outputCanvasCtx = outputCanvas.getContext('2d');
+                
+                inputAnalyserRef.current = inputCtx.createAnalyser();
+                inputAnalyserRef.current.fftSize = 256;
+                outputAnalyserRef.current = outputCtx.createAnalyser();
+                outputAnalyserRef.current.fftSize = 256;
 
+                const animate = () => {
+                    if (inputAnalyserRef.current && inputCanvasCtx) {
+                        drawVisualizer(inputAnalyserRef.current, inputCanvasCtx, inputCanvas, '#fbbf24'); // brand-gold
+                    }
+                    if (outputAnalyserRef.current && outputCanvasCtx) {
+                        drawVisualizer(outputAnalyserRef.current, outputCanvasCtx, outputCanvas, '#2dd4bf'); // brand-teal
+                    }
+                    animationFrameRef.current = requestAnimationFrame(animate);
+                };
+                animate();
+            }
+
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaStreamRef.current = stream;
+            
+            // Media Recorder setup for user audio
+            if (isRecording) {
+                mediaRecorderRef.current = new MediaRecorder(stream);
+                mediaRecorderRef.current.ondataavailable = event => {
+                    recordedChunksRef.current.push(event.data);
+                };
+                mediaRecorderRef.current.start();
+            }
+            
             const sessionPromise = ai.live.connect({
                 model: 'gemini-2.5-flash-native-audio-preview-09-2025',
                 callbacks: {
                     onopen: () => {
-                        setCallStatus('connected');
-                        addTranscriptLine('System', 'Agent connected.');
-
-                        if (!inputAudioContextRef.current || !mediaStreamRef.current || !inputAnalyserRef.current) return;
-                        const source = inputAudioContextRef.current.createMediaStreamSource(mediaStreamRef.current);
-                        scriptProcessorRef.current = inputAudioContextRef.current.createScriptProcessor(4096, 1, 1);
+                        console.log('Session opened');
+                        const source = inputCtx.createMediaStreamSource(stream);
+                        scriptProcessorRef.current = inputCtx.createScriptProcessor(4096, 1, 1);
                         
                         scriptProcessorRef.current.onaudioprocess = (audioProcessingEvent) => {
-                            if (isMuted || isHolding) return;
+                            if (isMuted) return;
                             const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-                            // FIX: Use the aliased GenAIBlob type.
                             const pcmBlob: GenAIBlob = {
-                                data: encode(new Uint8Array(new Int16Array(inputData.map(x => x * 32768)).buffer)),
+                                data: encode(new Int16Array(inputData.map(f => f * 32768)).buffer as any),
                                 mimeType: 'audio/pcm;rate=16000',
                             };
                             sessionPromise.then(session => session.sendRealtimeInput({ media: pcmBlob }));
                         };
                         
-                        source.connect(inputAnalyserRef.current);
-                        inputAnalyserRef.current.connect(scriptProcessorRef.current);
-                        scriptProcessorRef.current.connect(inputAudioContextRef.current.destination);
+                        source.connect(scriptProcessorRef.current);
+                        scriptProcessorRef.current.connect(inputCtx.destination);
+                        
+                        if (inputAnalyserRef.current) {
+                            source.connect(inputAnalyserRef.current);
+                        }
                     },
                     onmessage: async (message: LiveServerMessage) => {
-                        if (message.serverContent?.modelTurn?.parts[0]?.inlineData?.data) {
-                            const audioData = message.serverContent.modelTurn.parts[0].inlineData.data;
-                            if (outputAudioContextRef.current && outputAnalyserRef.current) {
-                                nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputAudioContextRef.current.currentTime);
-                                const audioBuffer = await decodeAudioData(decode(audioData), outputAudioContextRef.current, 24000, 1);
-                                const source = outputAudioContextRef.current.createBufferSource();
-                                source.buffer = audioBuffer;
+                        const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+                        if (base64Audio) {
+                            nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx.currentTime);
+                            const audioBuffer = await decodeAudioData(decode(base64Audio), outputCtx, 24000, 1);
+                            
+                            const source = outputCtx.createBufferSource();
+                            source.buffer = audioBuffer;
+
+                            if (outputAnalyserRef.current) {
                                 source.connect(outputAnalyserRef.current);
-                                outputAnalyserRef.current.connect(outputAudioContextRef.current.destination);
-                                source.start(nextStartTimeRef.current);
-                                nextStartTimeRef.current += audioBuffer.duration;
-                                audioSourcesRef.current.add(source);
-                                source.onended = () => audioSourcesRef.current.delete(source);
+                                outputAnalyserRef.current.connect(outputCtx.destination);
+                            } else {
+                                source.connect(outputCtx.destination);
                             }
+                            
+                            source.addEventListener('ended', () => {
+                                audioSourcesRef.current.delete(source);
+                            });
+                            source.start(nextStartTimeRef.current);
+                            nextStartTimeRef.current += audioBuffer.duration;
+                            audioSourcesRef.current.add(source);
                         }
+
+                        if (message.serverContent?.inputTranscription) {
+                            addTranscript({ speaker: 'You', text: message.serverContent.inputTranscription.text });
+                        }
+                        if (message.serverContent?.outputTranscription) {
+                            addTranscript({ speaker: 'Agent', text: message.serverContent.outputTranscription.text });
+                        }
+
                         if (message.serverContent?.interrupted) {
-                            for (const source of audioSourcesRef.current) source.stop();
-                            audioSourcesRef.current.clear();
+                            for (const source of audioSourcesRef.current.values()) {
+                                source.stop();
+                                audioSourcesRef.current.delete(source);
+                            }
                             nextStartTimeRef.current = 0;
                         }
 
-                        let updated = false;
-                        let currentTranscript = [...transcriptRef.current];
-                        
-                        const process = (transcription: { text?: string } | undefined, speaker: 'You' | 'Agent') => {
-                            if (transcription?.text) {
-                                // Handle hold commands
-                                if (speaker === 'Agent' && transcription.text.includes('[HOLD MUSIC]')) {
-                                    setIsHolding(true);
-                                }
-                                if (speaker === 'Agent' && transcription.text.includes('[RESUME CALL]')) {
-                                    setIsHolding(false);
-                                }
-
-                                const cleanedText = transcription.text.replace(/\[(HOLD MUSIC|RESUME CALL)\]/g, '').trim();
-                                if (!cleanedText) return;
-
-                                const last = currentTranscript[currentTranscript.length - 1];
-                                if (last?.speaker === speaker) {
-                                    last.text += cleanedText;
-                                } else {
-                                    currentTranscript.push({ speaker, text: cleanedText, timestamp: Date.now() });
-                                }
-                                updated = true;
-                            }
-                        };
-                        process(message.serverContent?.inputTranscription, 'You');
-                        process(message.serverContent?.outputTranscription, 'Agent');
-
-                        if (updated) setTranscript(currentTranscript);
+                        if (message.serverContent?.turnComplete) {
+                            console.log('Turn completed');
+                        }
                     },
                     onerror: (e: ErrorEvent) => {
                         console.error('Session error:', e);
-                        addTranscriptLine('System', `Error: ${e.message}`);
-                        handleEndCall();
+                        addTranscript({ speaker: 'System', text: `Error: ${e.message}` });
+                        endCall();
                     },
-                    onclose: () => addTranscriptLine('System', 'Session closed.'),
+                    onclose: () => {
+                        console.log('Session closed');
+                    },
                 },
                 config: {
                     responseModalities: [Modality.AUDIO],
-                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAP[selectedAgent.voice] || 'Zephyr' } } },
-                    systemInstruction: systemPrompt,
                     inputAudioTranscription: {},
                     outputAudioTranscription: {},
-                }
+                    speechConfig: {
+                        voiceConfig: {
+                            prebuiltVoiceConfig: { voiceName: VOICE_MAP[selectedAgent.voice] || 'Kore' },
+                        },
+                    },
+                    systemInstruction: getDepartmentalPrompt(department, selectedAgent.name, 'Turkish Airlines', selectedAgent.voiceDescription),
+                },
             });
 
             sessionRef.current = await sessionPromise;
+
         } catch (error) {
-            console.error('Failed to start call:', error);
-            addTranscriptLine('System', 'Failed to start call. Check permissions and console.');
+            console.error("Failed to start call:", error);
+            addTranscript({ speaker: 'System', text: `Failed to connect. Please check permissions and configuration.` });
             setCallStatus('ended');
-            setIvrState('ended');
-            stopVisualizers();
+            const tone = failToneRef.current;
+            if (tone) {
+                tone.currentTime = 0;
+                tone.play().catch(e => console.error("Failed to play fail tone", e));
+            }
         }
-    }, [isMuted, isHolding, startVisualizers, stopVisualizers, selectedAgent, callStartTime, addCallToHistory]);
 
-    const handleEndCall = useCallback((isFail = false) => {
-        if (ivrTimeoutRef.current) clearTimeout(ivrTimeoutRef.current);
-        ringingToneRef.current?.pause();
-        holdMusicRef.current?.pause();
-        setIsHolding(false);
-        if (isFail) failToneRef.current?.play();
+    }, [selectedAgent, addTranscript, isMuted, isRecording]);
+
+
+    const endCall = () => {
+        if (callStatusRef.current === 'idle' || callStatusRef.current === 'ended') return;
+
+        setCallStatus('ended');
+        setIvrState('ended');
+        clearTimeout(ivrTimeoutRef.current as number);
         
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-            mediaRecorderRef.current.stop();
+        // FIX: Safely pause audio to prevent race condition errors on quick hang-ups.
+        const ringTone = ringingToneRef.current;
+        if (ringTone && !ringTone.paused) {
+            ringTone.pause();
+            ringTone.currentTime = 0;
         }
-        mediaRecorderRef.current = null;
+        const holdMusic = holdMusicRef.current;
+        if (holdMusic && !holdMusic.paused) {
+            holdMusic.pause();
+            holdMusic.currentTime = 0;
+        }
+        
+        if (animationFrameRef.current) {
+            cancelAnimationFrame(animationFrameRef.current);
+            animationFrameRef.current = null;
+        }
 
+        // Clean up session
         sessionRef.current?.close();
         sessionRef.current = null;
         
-        mediaStreamRef.current?.getTracks().forEach(track => track.stop());
-        mediaStreamRef.current = null;
-
+        // Clean up audio contexts
         scriptProcessorRef.current?.disconnect();
         scriptProcessorRef.current = null;
-
         inputAudioContextRef.current?.close();
         outputAudioContextRef.current?.close();
-        ivrAudioContextRef.current?.close();
-        inputAudioContextRef.current = null;
-        outputAudioContextRef.current = null;
-        ivrAudioContextRef.current = null;
-
-        stopVisualizers();
-        setCallStatus('ended');
-        setIvrState('ended');
-        addTranscriptLine('System', 'Call ended.');
-    }, [stopVisualizers]);
-
-    const handleTimeout = useCallback(() => {
-        addTranscriptLine('System', 'No input detected. Call ended.');
-        handleEndCall(true);
-    }, [handleEndCall]);
-
-    useEffect(() => {
-        if (!selectedAgent) return;
-
-        const handleStateChange = (state: IvrState) => {
-            if (state === 'ringing') {
-                ringingToneRef.current?.play();
-                // Increased timeout to allow for more rings
-                ivrTimeoutRef.current = window.setTimeout(() => setIvrState('language_select'), 8000);
-            } else if (state === 'language_select' || state === 'main_menu') {
-                ringingToneRef.current?.pause();
-                const config = IVR_CONFIG[state];
-                const promptText = config.prompt(selectedAgent.name);
-
-                playIVRPrompt(promptText).then(() => {
-                    addTranscriptLine('System', 'Awaiting your selection...');
-                    ivrTimeoutRef.current = window.setTimeout(handleTimeout, config.timeout);
-                }).catch(() => handleEndCall(true));
-            }
-        };
-
-        handleStateChange(ivrState);
-
-        return () => {
-            if (ivrTimeoutRef.current) clearTimeout(ivrTimeoutRef.current);
-        };
-    }, [ivrState, selectedAgent, playIVRPrompt, handleTimeout, handleEndCall]);
-
-    useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            const key = event.key;
-            
-            if (ivrState === 'language_select' || ivrState === 'main_menu') {
-                if (ivrTimeoutRef.current) clearTimeout(ivrTimeoutRef.current);
-                keypadToneRef.current?.play();
+        
+        mediaStreamRef.current?.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
+        
+        // Stop recording and create blob URL
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.onstop = () => {
+                const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
+                const url = URL.createObjectURL(blob);
+                setRecordedAudioUrl(url);
                 
-                const config = IVR_CONFIG[ivrState];
-                const result = config.handleKeyPress(key);
+                if (selectedAgent && callStartTime) {
+                    const endTime = Date.now();
+                    const call: CallRecord = {
+                        id: `call_${Date.now()}`,
+                        agentId: selectedAgent.id,
+                        agentName: selectedAgent.name,
+                        startTime: callStartTime,
+                        endTime: endTime,
+                        duration: endTime - callStartTime,
+                        transcript: transcriptRef.current,
+                        recordingUrl: url,
+                    };
+                    addCallToHistory(call);
+                }
+                recordedChunksRef.current = [];
+            };
+            mediaRecorderRef.current.stop();
+        }
+    };
+    
+    useEffect(() => {
+        return () => {
+            // Ensure cleanup happens on component unmount
+            endCall();
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-                if (result) {
-                    if (result.nextState === 'routing' && result.department && selectedAgent) {
-                        setIvrState('routing');
-                        addTranscriptLine('System', `Routing to ${result.department}...`);
-                        const prompt = getDepartmentalPrompt(result.department, selectedAgent.name, selectedAgent.name.includes("Airlines") ? "Global Airlines" : "the company");
-                        connectToGemini(prompt);
-                    } else {
-                        setIvrState(result.nextState);
-                    }
-                } else {
-                    playIVRPrompt("Invalid selection. Please try again.").then(() => {
-                        // Reset timeout to give user another chance
-                        addTranscriptLine('System', 'Awaiting your selection...');
-                        const config = IVR_CONFIG[ivrState];
-                        ivrTimeoutRef.current = window.setTimeout(handleTimeout, config.timeout);
-                    }).catch(() => handleEndCall(true));
+    const playIvrPrompt = useCallback(async (text: string, onEnded?: () => void) => {
+        if (!process.env.API_KEY || !selectedAgent) return;
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash-preview-tts",
+                contents: [{ parts: [{ text }] }],
+                config: {
+                    responseModalities: [Modality.AUDIO],
+                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } }
+                }
+            });
+            const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+            if (base64Audio) {
+                if (!ivrAudioContextRef.current) {
+                     ivrAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+                }
+                const audioCtx = ivrAudioContextRef.current;
+                const audioBuffer = await decodeAudioData(decode(base64Audio), audioCtx, 24000, 1);
+                const source = audioCtx.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioCtx.destination);
+                source.start();
+                if (onEnded) {
+                    source.onended = onEnded;
                 }
             }
-        };
+        } catch (error) {
+            console.error("IVR prompt failed:", error);
+             if (onEnded) onEnded();
+        }
+    }, [selectedAgent]);
 
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [ivrState, selectedAgent, connectToGemini, handleEndCall, playIVRPrompt, handleTimeout]);
-    
-    
-    const handleConnect = useCallback(async () => {
-        if (callStatus !== 'idle' && callStatus !== 'ended') return;
-        setTranscript([]);
-        setDialedNumber('');
-        setRecordedAudioUrl(null);
-        recordedChunksRef.current = [];
-        setCallStatus('connecting');
-        setIvrState('ringing');
-        addTranscriptLine('System', 'Dialing...');
-        setCallStartTime(Date.now());
-    }, [callStatus]);
+
+    const handleIvrKeyPress = (key: string) => {
+        if (ivrState !== 'language_select' && ivrState !== 'main_menu') return;
+        
+        // FIX: Reset and play sound effect to handle rapid presses correctly.
+        const keypadTone = keypadToneRef.current;
+        if (keypadTone) {
+            keypadTone.currentTime = 0;
+            keypadTone.play().catch(e => console.error("Failed to play keypad tone", e));
+        }
+
+        setDialedNumber(prev => prev + key);
+        clearTimeout(ivrTimeoutRef.current as number);
+
+        const config = IVR_CONFIG[ivrState];
+        const result = config.handleKeyPress(key);
+
+        if (result) {
+            if (result.nextState === 'routing' && result.department) {
+                setIvrState('routing');
+                playIvrPrompt(`Connecting you to the ${result.department} department. Please hold.`, () => {
+                    setTimeout(() => connectToAgent(result.department as Department), 1000);
+                });
+            } else {
+                 setIvrState(result.nextState);
+            }
+        } else {
+            playIvrPrompt("I'm sorry, that's not a valid option. Please try again.", () => {
+                setIvrState(ivrState); // Re-trigger the same state
+            });
+        }
+    };
     
     useEffect(() => {
-      return () => {
-        handleEndCall();
-      }
-    }, [handleEndCall]);
+        if (callStatus === 'connecting' || callStatus === 'connected') {
+            const config = IVR_CONFIG[ivrState as keyof typeof IVR_CONFIG];
+            if (config) {
+                const promptText = typeof config.prompt === 'function' ? config.prompt(selectedAgent?.name || 'Customer Service') : config.prompt;
+                
+                playIvrPrompt(promptText, () => {
+                   ivrTimeoutRef.current = setTimeout(() => {
+                       playIvrPrompt("I didn't receive a response. Goodbye.", endCall);
+                   }, config.timeout);
+                });
+            }
+        }
+        
+        return () => clearTimeout(ivrTimeoutRef.current as number);
 
-    const toggleMute = () => setIsMuted(prev => !prev);
-    const handleDial = (digit: string) => {
-        keypadToneRef.current?.play();
-        setDialedNumber(prev => prev + digit)
+    }, [ivrState, callStatus, selectedAgent, playIvrPrompt, endCall]);
+
+    const TranscriptView = () => (
+        <div aria-live="polite" className="h-full space-y-3 overflow-y-auto pr-2">
+            {transcript.map((line, i) => (
+                <div key={i} className={`flex items-start gap-3 ${line.speaker === 'You' ? 'justify-end' : ''}`}>
+                    {line.speaker === 'Agent' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-teal/20 text-brand-teal flex items-center justify-center"><Bot size={18}/></div>}
+                    <div className={`p-3 rounded-lg max-w-lg ${line.speaker === 'You' ? 'bg-eburon-border' : 'bg-eburon-bg'} ${line.speaker === 'System' ? 'text-center w-full bg-transparent text-eburon-muted text-xs' : ''}`}>
+                        <p>{line.text}</p>
+                    </div>
+                     {line.speaker === 'You' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-eburon-border flex items-center justify-center"><User size={18}/></div>}
+                </div>
+            ))}
+        </div>
+    );
+
+    const toggleHold = () => {
+        setIsHolding(prev => {
+            const holdMusic = holdMusicRef.current;
+            if (!holdMusic) return !prev;
+
+            const newIsHolding = !prev;
+
+            if (newIsHolding) { // Going on hold
+                holdMusic.play().catch(e => console.error("Hold music failed to play", e));
+                audioSourcesRef.current.forEach(source => source.stop());
+                audioSourcesRef.current.clear();
+                setIsMuted(true);
+            } else { // Coming off hold
+                // FIX: Safely pause audio to prevent race conditions on quick toggles.
+                if (!holdMusic.paused) {
+                    holdMusic.pause();
+                    holdMusic.currentTime = 0;
+                }
+                setIsMuted(false);
+            }
+            return newIsHolding;
+        });
     };
-    const handleDelete = () => {
-        keypadToneRef.current?.play();
-        setDialedNumber(prev => prev.slice(0, -1))
-    };
-    const dialpadKeys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
+    
+    const dialpadKeys = [
+        { d: '1', s: '' }, { d: '2', s: 'ABC' }, { d: '3', s: 'DEF' },
+        { d: '4', s: 'GHI' }, { d: '5', s: 'JKL' }, { d: '6', s: 'MNO' },
+        { d: '7', s: 'PQRS' }, { d: '8', s: 'TUV' }, { d: '9', s: 'WXYZ' },
+        { d: '*', s: '' }, { d: '0', s: '+' }, { d: '#', s: '' },
+    ];
 
-    if (!selectedAgent) {
-        return (
-            <div className="p-6 flex flex-col h-full items-center justify-center text-center">
-                <h1 className="text-xl font-semibold text-eburon-text mb-4">No Agent Selected</h1>
-                <p className="text-eburon-muted max-w-sm">Please select an agent from the Agents page or Home page to start a test call.</p>
-            </div>
-        );
-    }
-
-    const showDialpad = ivrState === 'idle' || ivrState === 'ended' || ivrState === 'language_select' || ivrState === 'main_menu';
 
     return (
-        <div className="p-6 flex flex-col h-full">
-            <audio ref={audioBgRef} src="https://storage.googleapis.com/vapi-assets/call-center-bg.mp3" loop />
-            <audio ref={holdMusicRef} src="https://commondatastorage.googleapis.com/codeskulptor-assets/Epoq-Lepidoptera.ogg" loop />
-            <audio ref={keypadToneRef} src="https://storage.googleapis.com/vapi-assets/dtmf-1.mp3" />
-            <audio ref={ringingToneRef} src="https://storage.googleapis.com/vapi-assets/us-ringback-tone.mp3" loop />
-            <audio ref={failToneRef} src="https://storage.googleapis.com/vapi-assets/us-busy-signal.mp3" />
+        <div className="p-6 h-full flex items-center justify-center">
+             <audio ref={audioBgRef} src={BACKGROUND_AMBIENCE_URL} loop />
+             <audio ref={holdMusicRef} src={HOLD_MUSIC_URL} loop />
+             <audio ref={keypadToneRef} src={KEYPAD_TONE_URL} />
+             <audio ref={ringingToneRef} src={RINGING_TONE_URL} loop />
+             <audio ref={failToneRef} src={FAIL_TONE_URL} />
 
-            <div className="flex justify-between items-center mb-4">
-                <h1 className="text-xl font-semibold text-eburon-text">Live Call Test: <span className="text-brand-teal font-bold">{selectedAgent.name}</span></h1>
-                <div className="flex items-center space-x-4">
-                     {(callStatus === 'idle' || callStatus === 'ended') ? (
-                        <label htmlFor="bg-sound-toggle" className="flex items-center space-x-2 cursor-pointer">
-                            <input
-                                id="bg-sound-toggle"
-                                type="checkbox"
-                                className="sr-only peer"
-                                checked={isBgSoundActive}
-                                onChange={() => setIsBgSoundActive(prev => !prev)}
-                            />
-                            <div className="relative w-9 h-5 bg-eburon-bg rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-teal"></div>
-                            <span className="text-sm font-medium text-eburon-muted">Call BG</span>
-                        </label>
-                    ) : (
-                         isRecording && ivrState === 'connected_to_agent' && !isHolding && (
-                            <div className="flex items-center space-x-2 text-danger animate-pulse">
-                                <Circle size={10} className="text-danger fill-current" />
-                                <span className="text-sm font-medium">Recording</span>
-                            </div>
-                        )
-                    )}
-                    {isHolding && (
-                        <div className="flex items-center space-x-2 text-brand-gold animate-pulse">
-                            <Pause size={12} className="text-brand-gold fill-current" />
-                            <span className="text-sm font-medium">On Hold</span>
+            <div className="w-full max-w-5xl h-[80vh] bg-eburon-card border border-eburon-border rounded-xl flex">
+                <div className="w-1/3 p-6 flex flex-col justify-between border-r border-eburon-border">
+                    <div>
+                        <h2 className="text-lg font-semibold text-eburon-text">
+                            {callStatus === 'connected' ? `Talking to ${selectedAgent?.name}` : 'Call Simulation'}
+                        </h2>
+                        <p className="text-eburon-muted text-sm">{selectedAgent?.personaShortText}</p>
+                    </div>
+                    
+                    <div className="flex flex-col items-center space-y-4">
+                        <div className="text-center h-10">
+                             <p className="text-3xl font-light tracking-widest">{dialedNumber || 'Dial Pad'}</p>
+                             {callStatus === 'connecting' && <p className="text-sm text-warn animate-pulse">{ivrState}...</p>}
+                             {callStatus === 'connected' && <p className="text-sm text-ok">Connected</p>}
+                             {callStatus === 'ended' && <p className="text-sm text-danger">Call Ended</p>}
                         </div>
-                    )}
-                 </div>
-            </div>
-            <div className="flex-1 bg-eburon-card border border-eburon-border rounded-xl p-4 flex flex-col space-y-4 overflow-hidden">
-                <div className="flex-shrink-0 p-4">
-                     <div className="h-10 text-center text-3xl font-light tracking-wider text-eburon-text">{dialedNumber || ' '}</div>
+
+                         <div className="grid grid-cols-3 gap-4">
+                             {dialpadKeys.map(key => <DialpadKey key={key.d} digit={key.d} subtext={key.s} onClick={handleIvrKeyPress} />)}
+                         </div>
+
+                         <div className="flex items-center space-x-4 pt-4">
+                             {callStatus === 'connected' ? (
+                                <>
+                                    <DialerButton className={isMuted ? "bg-white/10" : "bg-eburon-bg"} onClick={() => setIsMuted(!isMuted)}>
+                                        {isMuted ? <MicOff size={32}/> : <Mic size={32}/>}
+                                    </DialerButton>
+                                    <DialerButton className="bg-danger/80 hover:bg-danger text-white" onClick={endCall} data-id="btn-end-call">
+                                        <PhoneOff size={32} />
+                                    </DialerButton>
+                                    <DialerButton className={isHolding ? "bg-brand-gold text-eburon-bg" : "bg-eburon-bg"} onClick={toggleHold}>
+                                        {isHolding ? <PlayIcon size={32}/> : <Pause size={32}/>}
+                                    </DialerButton>
+                                </>
+                             ) : (
+                                <>
+                                    <div className="w-20 h-20" /> {/* Placeholder */}
+                                    <DialerButton className="bg-ok/80 hover:bg-ok text-white" onClick={startCall} disabled={callStatus !== 'idle' && callStatus !== 'ended'} data-id="btn-start-call">
+                                        <Phone size={32} />
+                                    </DialerButton>
+                                    <div className="w-20 h-20" /> {/* Placeholder */}
+                                </>
+                             )}
+                         </div>
+                    </div>
+                    
+                     <div className="flex items-center justify-between">
+                         <div className="flex items-center space-x-2 text-eburon-muted text-sm">
+                             {isRecording ? <><Circle size={12} className="text-danger fill-current animate-pulse"/><span>REC</span></> : <span>Not Recording</span>}
+                         </div>
+                         <div className="flex items-center space-x-2 cursor-pointer" onClick={() => setIsBgSoundActive(!isBgSoundActive)}>
+                             <Volume2 size={16} className={isBgSoundActive ? 'text-brand-teal' : 'text-eburon-muted'}/>
+                             <div className="w-10 h-5 bg-eburon-bg rounded-full p-1 flex items-center">
+                                <div className={`w-3.5 h-3.5 rounded-full bg-eburon-muted transition-transform ${isBgSoundActive ? 'translate-x-5 bg-brand-teal' : ''}`}/>
+                             </div>
+                         </div>
+                    </div>
                 </div>
 
-                {showDialpad ? (
-                    <div className="grid grid-cols-3 gap-4 place-items-center p-4">
-                        {dialpadKeys.map(key => <DialpadKey key={key} digit={key} onClick={handleDial}/>)}
-                        <div></div>
-                        <DialerButton className="bg-eburon-muted/10" onClick={handleDelete}><Delete size={32}/></DialerButton>
-                    </div>
-                ) : (
-                     <div aria-live="polite" className="flex-1 space-y-3 overflow-y-auto pr-2">
-                        {transcript.map((line, i) => (
-                            <div key={i} className={`flex items-start gap-3 ${line.speaker === 'You' ? 'justify-end' : ''}`}>
-                                 {line.speaker === 'Agent' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-teal/20 text-brand-teal flex items-center justify-center"><Bot size={18}/></div>}
-                                 <div className={`p-3 rounded-lg max-w-lg ${line.speaker === 'You' ? 'bg-eburon-border' : 'bg-eburon-bg'} ${line.speaker === 'System' ? 'text-center w-full bg-transparent text-eburon-muted text-xs' : ''}`}>
-                                    <p>{line.text}</p>
-                                </div>
-                                {line.speaker === 'You' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-eburon-border flex items-center justify-center"><User size={18}/></div>}
+                <div className="w-2/3 p-6 flex flex-col">
+                    <div className="flex-1 min-h-0 flex flex-col space-y-2">
+                        <div className="grid grid-cols-2 gap-4 h-16">
+                            <div className="flex flex-col items-center">
+                                <canvas ref={inputVisualizerRef} className="w-full h-full" />
+                                <label className="text-xs text-brand-gold">Your Voice</label>
                             </div>
-                        ))}
-                    </div>
-                )}
-
-
-                {recordedAudioUrl && callStatus === 'ended' && (
-                    <div className="text-center p-2 flex-shrink-0">
-                        <p className="text-sm text-ok">Call saved to history.</p>
-                        <a 
-                            href={recordedAudioUrl} 
-                            download={`Eburon-recording-${selectedAgent.name.replace(/\s+/g, '_')}-${Date.now()}.webm`}
-                            className="text-brand-teal hover:underline text-sm font-medium"
-                        >
-                            Download Call Recording
-                        </a>
-                    </div>
-                )}
-                
-                 <div className="flex-shrink-0 flex flex-col items-center w-full p-4 border-t border-eburon-border">
-                    <div className="flex justify-around items-center w-full">
-                        <div className="text-center w-40">
-                            <canvas ref={inputVisualizerRef} width="150" height="40" />
-                            <p className="text-xs text-eburon-muted mt-1">Your Input</p>
+                             <div className="flex flex-col items-center">
+                                <canvas ref={outputVisualizerRef} className="w-full h-full" />
+                                <label className="text-xs text-brand-teal">Agent Voice</label>
+                            </div>
                         </div>
-                        
-                        <div className="flex justify-center items-center space-x-6">
-                             <DialerButton disabled={ivrState !== 'connected_to_agent'} className="bg-eburon-muted/20 text-eburon-muted"><Volume2 size={32}/></DialerButton>
-                            {callStatus === 'idle' || callStatus === 'ended' ? (
-                                <DialerButton data-id="dialer-call" className="bg-ok/80 hover:bg-ok text-white" onClick={handleConnect}>
-                                    <Phone size={32}/>
-                                </DialerButton>
-                            ) : (
-                                <DialerButton data-id="dialer-end" className="bg-danger/80 hover:bg-danger text-white" onClick={() => handleEndCall(false)}>
-                                    <PhoneOff size={32}/>
-                                </DialerButton>
-                            )}
-                            <DialerButton disabled={ivrState !== 'connected_to_agent'} className={`transition-colors ${isMuted ? 'bg-red-500/20 text-red-400' : 'bg-eburon-muted/20 text-eburon-muted'}`} onClick={toggleMute}>
-                                {isMuted ? <MicOff size={32}/> : <Mic size={32}/>}
-                            </DialerButton>
-                        </div>
-
-                        <div className="text-center w-40">
-                            <canvas ref={outputVisualizerRef} width="150" height="40" />
-                            <p className="text-xs text-eburon-muted mt-1">Agent Output</p>
-                        </div>
+                        <TranscriptView />
                     </div>
-                 </div>
+                    <div className="pt-4 border-t border-eburon-border flex-shrink-0">
+                         {recordedAudioUrl ? (
+                             <div className="flex items-center space-x-3">
+                                <p className="text-sm text-eburon-muted">User audio recording:</p>
+                                <audio controls src={recordedAudioUrl} className="w-full h-10">Your browser does not support the audio element.</audio>
+                                <button onClick={() => setRecordedAudioUrl(null)} className="text-eburon-muted hover:text-danger"><Delete size={18}/></button>
+                            </div>
+                         ) : (
+                             <p className="text-sm text-center text-eburon-muted">Call recording will appear here after the call ends.</p>
+                         )}
+                    </div>
+                </div>
             </div>
         </div>
     );

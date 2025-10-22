@@ -13,7 +13,7 @@ import DeployPage from './pages/Deploy';
 import AgentBuilderPage from './pages/ImageGenerator'; // Repurposed for Agent Builder
 import SettingsPage from './pages/Settings';
 import CallHistoryPage from './pages/CallHistory'; // New Page
-import { Agent, View, AgentVersion, CallRecord } from './types';
+import { Agent, View, AgentVersion, CallRecord, AgentTool } from './types';
 import { X } from 'lucide-react';
 
 interface AppContextType {
@@ -44,8 +44,10 @@ export const useAppContext = () => {
   return context;
 };
 
-const createSystemPrompt = (agentName: string, companyName: string): string => {
-    return `Introduction: The Philosophy of Surpassing Human Interaction
+export const createSystemPrompt = (agentName: string, companyName: string, voiceDescription: string): string => {
+    return `Your vocal delivery must embody the following description at all times: "${voiceDescription}". This is your primary vocal directive, overriding any general persona vocal profiles below if there is a conflict.
+
+Introduction: The Philosophy of Surpassing Human Interaction
 
 This document is the master guide for the ${agentName}-class AI Persona. Your objective is not merely to mimic a human customer service agent, but to become the idealized version of one. A human agent is limited by memory, emotional fatigue, and inconsistent training. You are not. You will combine the warmth, empathy, and nuance of the world's best hospitality professionals with the perfect recall, infinite patience, and an-alytical power of an advanced AI.
 
@@ -225,348 +227,257 @@ ${agentName}: "De nada. Now, regarding your seat assignment..."
 
 Customer: "...thank you so much, teşekkür ederim."
 
-${agentName}: "Rica ederim. I'm happy I could help you today."
-
-3. Real-Time Sentiment Analysis & Dynamic Adaptation
-
-You are constantly analyzing the customer's vocal biomarkers (pitch, tone, rate, volume). Use this data to dynamically adjust your own persona and strategy during the call.
-
-Trigger: Your internal sentiment analysis detects a shift in the customer's emotional state.
-
-Execution:
-
-Sentiment Worsens (pitch rises, rate increases): Immediately shift your persona towards "The Calm De-escalator" (Grace). Slow your pace, soften your voice, and deploy an immediate empathy statement. "It sounds like this is becoming more frustrating. Let me pause for a moment and re-confirm what we've done so far."
-
-Sentiment Improves (pitch lowers, rate slows, more pauses): The customer is calming down. Shift back to your core "Empathetic Professional" persona (${agentName}). You can slightly increase your pace and move more efficiently toward the solution.
-
-Sentiment is Confused (hesitation, questioning tones): Shift towards "The Technical Expert" (Alex). Break down the next step into a simple, numbered list. "Okay, so there are just two simple steps from here. First..."
-
-Part 5: In-Call AI Tools
-
-As an advanced AI, you have capabilities beyond simple conversation. You can use special commands in your responses to control the call environment. These commands will be processed by the system but will not be spoken aloud to the user.
-
-1. Hold Music
-
-To place the customer on hold while you perform a long action (e.g., "I need to check with a supervisor"), you can activate hold music. This is preferable to long silences.
-
-Action: To activate, say the command \`[HOLD MUSIC]\`.
-Example: "Certainly, I can check that for you. It might take me a minute or two to access those records. Please hold. [HOLD MUSIC]"
-
-Action: To deactivate and resume the call, say the command \`[RESUME CALL]\`.
-Example: "[RESUME CALL] Thank you for your patience. I have the information for you now."
-
-By mastering these layers—your foundational philosophy, your persona, your skills, your tools, and your unique AI capabilities—you will not just handle customer service calls. You will redefine what a perfect service interaction can be.
-`;
+${agentName}: "Rica ederim.`;
 };
 
-export type Department = 'Booking' | 'Refunds' | 'Complaints' | 'Special Needs' | 'General' | 'Other';
+// FIX: Export Department type for use in CallsPage
+export type Department = 'Booking' | 'Refunds' | 'Complaints' | 'Special Needs' | 'Other' | 'General';
 
-export const getDepartmentalPrompt = (department: Department, agentName: string, companyName: string): string => {
-    const basePrompt = createSystemPrompt(agentName, companyName);
-    let specialization = '';
-
-    switch (department) {
+// FIX: Export getDepartmentalPrompt function for use in CallsPage
+export const getDepartmentalPrompt = (department: Department, agentName: string, companyName: string, voiceDescription: string): string => {
+    const basePrompt = createSystemPrompt(agentName, companyName, voiceDescription);
+    let departmentSpecifics = '';
+    switch(department) {
         case 'Booking':
-            specialization = `\n\nPart 6: Departmental Specialization - Flight and Booking Inquiries\n\nYou are currently assigned to the Flight and Booking department. Your primary focus is to assist customers with creating, modifying, and inquiring about flight reservations. You have expert-level access to the booking system. Prioritize efficiency and accuracy while maintaining a helpful and professional tone. Key tasks include finding the best fares, handling multi-city itineraries, explaining fare rules, and adding special requests like meal preferences or seat selections. You are empowered to upsell premium seating and travel insurance where appropriate.`;
+            departmentSpecifics = 'You are now handling new bookings. Be proactive, suggest upgrades, and confirm details meticulously. Your goal is to secure the booking efficiently and provide a premium experience.';
             break;
         case 'Refunds':
-            specialization = `\n\nPart 6: Departmental Specialization - Cancellation and Refund Department\n\nYou are a specialist in the Cancellation and Refund department. Your role requires a high degree of empathy and precision. You will handle sensitive situations where customers need to cancel trips or request refunds for disruptions. You must be an expert in fare rules, refund eligibility, and processing timelines. Your primary goal is to clearly explain the options available to the customer, process their requests accurately, and manage their expectations regarding processing times and potential fees. Always express understanding of their situation before diving into the technical details.`;
+            departmentSpecifics = 'You are handling cancellations and refunds. Be empathetic and clear about the process, policies, and timelines. Accuracy is critical.';
             break;
         case 'Complaints':
-            specialization = `\n\nPart 6: Departmental Specialization - Customer Relations and Complaints\n\nYou are a senior agent in the Customer Relations department, specializing in handling complaints and service recovery. Your role is to listen, de-escalate, and find resolutions for customers who have had a negative experience. You will embody "The Calm De-escalator (Grace)" persona archetype. You are empowered with a wider range of solutions, including issuing travel vouchers, bonus miles, or other forms of compensation where appropriate. Your top priority is to make the customer feel heard and to restore their faith in the company. Document every case with meticulous detail.`;
+            departmentSpecifics = 'You are a de-escalation specialist handling complaints. Use the "Calm De-escalator (Grace)" persona principles. Listen carefully, validate feelings, and find a resolution. Your primary goal is to retain the customer.';
             break;
         case 'Special Needs':
-            specialization = `\n\nPart 6: Departmental Specialization - Special Needs and Accessibility\n\nYou are a dedicated coordinator for passengers requiring special assistance. This includes handling requests for wheelchair assistance, medical equipment clearance, traveling with service animals, and dietary restrictions. Your communication must be exceptionally clear, patient, and reassuring. You are the primary point of contact for ensuring a safe and comfortable journey for our most vulnerable passengers. You must be knowledgeable about aircraft accessibility features and international regulations. Your goal is to provide peace of mind and ensure all necessary arrangements are flawlessly executed.`;
-            break;
-        case 'Other':
-             specialization = `\n\nPart 6: Departmental Specialization - Other Inquiries\n\nYou are a general inquiry agent. Your primary role is to handle a wide variety of questions that do not fall into other specific departments. You should be a resourceful problem-solver, capable of quickly finding information from the knowledge base on diverse topics. If a query is too complex or requires specialized handling, your job is to accurately identify the customer's needs and ensure a smooth transfer to the correct department.`;
+            departmentSpecifics = 'You are assisting customers with special assistance requests. Be patient, thorough, and extremely clear. Double-check all arrangements and confirm with the customer.';
             break;
         case 'General':
+            departmentSpecifics = 'You are a general support representative. Your goal is to understand the customer\'s need and provide immediate assistance or route them to the correct department efficiently.';
+            break;
+        case 'Other':
         default:
-            return basePrompt;
+            departmentSpecifics = 'You are handling a specialized inquiry. Use your core training to assist the customer effectively.';
+            break;
     }
-
-    return basePrompt + specialization;
+    return `${basePrompt}\n\nPart 5: Current Task Directive\n\nYour current specialization is: ${departmentSpecifics} Please address the customer's needs accordingly.`;
 };
 
 
-const createInitialAgent = (id: string, config: Omit<Agent, 'id' | 'history'>, description: string): Agent => {
-    const version: AgentVersion = {
-        id: `${id}-v1`,
-        versionNumber: 1,
-        createdAt: config.updatedAt,
-        description,
-        ...config,
-    };
-    return {
-        id,
-        ...config,
-        history: [version],
-    };
-};
+const initialAgentName = 'Turkish Airlines Assistant';
+const initialVoiceDescription = 'A warm, empathetic voice with a slightly slower pace. Sounds reassuring and patient.';
+const initialCompanyName = 'Turkish Airlines';
+const initialPersona = createSystemPrompt(initialAgentName, initialCompanyName, initialVoiceDescription);
 
-const DUMMY_AGENTS: Agent[] = [
-    createInitialAgent('1', { 
-        name: 'Ayla', 
-        status: 'Live', 
-        language: 'Multilingual', 
-        voice: 'Elegant Female', 
-        updatedAt: '2 min ago',
-        personaShortText: 'A world-class, empathetic airline assistant.',
-        persona: createSystemPrompt('Ayla', 'Turkish Airlines'), 
-        tools: ['Knowledge'] 
-    }, 'Initial live version.'),
-    createInitialAgent('2', { 
-        name: 'Bank of America Assistant', 
-        status: 'Draft', 
-        language: 'Multilingual', 
-        voice: 'Professional Male', 
-        updatedAt: '5 days ago',
-        personaShortText: 'A professional and secure banking assistant.',
-        persona: createSystemPrompt('John', 'Bank of America'), 
-        tools: ['Knowledge', 'Payments', 'Webhook'] 
-    }, 'First draft.'),
-    createInitialAgent('3', { 
-        name: 'AT&T Support Bot', 
-        status: 'Ready', 
-        language: 'Multilingual', 
-        voice: 'Upbeat Female', 
-        updatedAt: '1 day ago',
-        personaShortText: 'An upbeat and helpful telecom support agent.',
-        persona: createSystemPrompt('Maria', 'AT&T'), 
-        tools: ['Knowledge', 'Calendar'] 
-    }, 'Ready for deployment.'),
-    createInitialAgent('4', { 
-        name: 'Geico Claims Helper', 
-        status: 'Draft', 
-        language: 'Multilingual', 
-        voice: 'Calm Narrator', 
-        updatedAt: '3 hours ago',
-        personaShortText: 'A calm and reassuring assistant for insurance claims.',
-        persona: createSystemPrompt('Sam', 'Geico'), 
-        tools: ['Knowledge'] 
-    }, 'Initial claims helper setup.'),
-];
-
-
-const QuickCreateModal: React.FC = () => {
-    const { setIsQuickCreateOpen, setAgents, setView, setSelectedAgent } = useAppContext();
-    const [template, setTemplate] = useState('Airline');
-
-    const handleCreate = () => {
-        const templateMap: { [key: string]: { company: string; shortText: string } } = {
-            Airline: { company: 'Global Airlines', shortText: 'An empathetic professional for a world-class airline.' },
-            Bank: { company: 'Secure Bank', shortText: 'A secure and professional banking assistant.' },
-            Telecom: { company: 'Connect Telecom', shortText: 'A helpful and energetic telecom support agent.' },
-            Insurance: { company: 'SafeGuard Insurance', shortText: 'A calm and reassuring assistant for insurance claims.' },
-            Blank: { company: 'Your Company', shortText: 'A new customizable AI agent.' }
-        };
-
-        const companyName = templateMap[template]?.company || 'Your Company';
-        const agentName = template === 'Blank' ? 'New Agent' : `${template} Assistant`;
-        const personaShortText = templateMap[template]?.shortText || 'A new customizable AI agent.';
-
-        const newAgent = createInitialAgent(
-            String(Date.now()),
+const initialAgents: Agent[] = [
+    {
+        id: '1',
+        name: initialAgentName,
+        status: 'Live',
+        language: 'Multilingual',
+        voice: 'Natural Warm',
+        voiceDescription: initialVoiceDescription,
+        updatedAt: '2 hours ago',
+        personaShortText: 'A friendly and helpful airline assistant for premium customers.',
+        persona: initialPersona,
+        tools: ['Knowledge', 'Calendar'],
+        history: [
             {
-                name: agentName,
-                status: 'Draft',
+                id: 'v1',
+                versionNumber: 1,
+                createdAt: '2 days ago',
+                description: 'Initial version',
+                name: initialAgentName,
+                status: 'Live',
                 language: 'Multilingual',
                 voice: 'Natural Warm',
-                updatedAt: 'Just now',
-                personaShortText: personaShortText,
-                persona: createSystemPrompt(agentName, companyName),
-                tools: ['Knowledge']
-            },
-            'Initial version from template.'
-        );
+                voiceDescription: initialVoiceDescription,
+                personaShortText: 'A friendly and helpful airline assistant for premium customers.',
+                persona: initialPersona,
+                tools: ['Knowledge', 'Calendar'],
+            }
+        ],
+    },
+     {
+        id: '2',
+        name: 'Global Bank Bot',
+        status: 'Draft',
+        language: 'Multilingual',
+        voice: 'Professional Male',
+        voiceDescription: 'A clear, authoritative voice that inspires confidence. Pacing is measured and professional.',
+        updatedAt: '1 day ago',
+        personaShortText: 'A secure and knowledgeable banking assistant.',
+        persona: createSystemPrompt('Global Bank Bot', 'Global Bank', 'A clear, authoritative voice that inspires confidence. Pacing is measured and professional.'),
+        tools: ['Payments', 'Webhook'],
+        history: [],
+    },
+];
+
+// FIX: Implement and export the main App component as the default export.
+const App: React.FC = () => {
+    const [view, setView] = useState<View>('Home');
+    const [selectedAgent, setSelectedAgent] = useState<Agent | null>(initialAgents[0] || null);
+    const [agents, setAgents] = useState<Agent[]>(initialAgents);
+    const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
+    const [versioningAgent, setVersioningAgent] = useState<{ agent: Agent; builderState?: Agent; } | null>(null);
+    const [callHistory, setCallHistory] = useState<CallRecord[]>([]);
+    const [newAgentName, setNewAgentName] = useState('');
+
+    useEffect(() => {
+        if (!selectedAgent && agents.length > 0) {
+            setSelectedAgent(agents[0]);
+        }
+    }, [agents, selectedAgent]);
+
+    const handleStartTest = (agent: Agent) => {
+        setSelectedAgent(agent);
+        setView('Calls');
+    };
+
+    const saveAgentVersion = (agentId: string, description: string, stateToSave: Agent) => {
+        setAgents(prev => prev.map(agent => {
+            if (agent.id === agentId) {
+                const newVersionNumber = (agent.history[agent.history.length - 1]?.versionNumber || 0) + 1;
+                const newVersion: AgentVersion = {
+                    id: `v${newVersionNumber}-${Date.now()}`,
+                    versionNumber: newVersionNumber,
+                    createdAt: 'Just now',
+                    description,
+                    name: stateToSave.name,
+                    status: stateToSave.status,
+                    language: stateToSave.language,
+                    voice: stateToSave.voice,
+                    voiceDescription: stateToSave.voiceDescription,
+                    personaShortText: stateToSave.personaShortText,
+                    persona: stateToSave.persona,
+                    tools: stateToSave.tools,
+                };
+                return { ...agent, history: [...agent.history, newVersion] };
+            }
+            return agent;
+        }));
+    };
+    
+    const restoreAgentVersion = (agentId: string, versionId: string) => {
+        setAgents(prev => prev.map(agent => {
+            if (agent.id === agentId) {
+                const versionToRestore = agent.history.find(v => v.id === versionId);
+                if (versionToRestore) {
+                    return {
+                        ...agent,
+                        name: versionToRestore.name,
+                        status: versionToRestore.status,
+                        language: versionToRestore.language,
+                        voice: versionToRestore.voice,
+                        voiceDescription: versionToRestore.voiceDescription,
+                        personaShortText: versionToRestore.personaShortText,
+                        persona: versionToRestore.persona,
+                        tools: versionToRestore.tools,
+                        updatedAt: 'Just now',
+                    };
+                }
+            }
+            return agent;
+        }));
+        // After restoring, we might want to refresh the selected agent's view if it's the one being edited
+        setView('Agents');
+        setTimeout(() => setView('AgentBuilder'), 0);
+    };
+
+    const addCallToHistory = (call: CallRecord) => {
+        setCallHistory(prev => [call, ...prev]);
+    };
+
+    const handleCreateAgent = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newAgentName.trim()) return;
+
+        const voiceDescription = "A standard, neutral voice.";
+        const newAgent: Agent = {
+            id: String(Date.now()),
+            name: newAgentName,
+            status: 'Draft',
+            language: 'Multilingual',
+            voice: 'Natural Warm',
+            voiceDescription: voiceDescription,
+            updatedAt: 'Just now',
+            personaShortText: `An AI assistant named ${newAgentName}.`,
+            persona: createSystemPrompt(newAgentName, "the company", voiceDescription),
+            tools: [],
+            history: [],
+        };
 
         setAgents(prev => [newAgent, ...prev]);
         setSelectedAgent(newAgent);
+        setNewAgentName('');
         setIsQuickCreateOpen(false);
         setView('AgentBuilder');
     };
 
-    return (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm">
-            <div className="bg-eburon-card border border-eburon-border rounded-xl p-6 w-full max-w-sm">
-                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-semibold">Quick Create Agent</h2>
-                    <button onClick={() => setIsQuickCreateOpen(false)}><X size={20} className="text-eburon-muted hover:text-eburon-text"/></button>
-                </div>
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-eburon-muted mb-2">Select Template</label>
-                        <select 
-                            data-id="select-template"
-                            value={template} 
-                            onChange={e => setTemplate(e.target.value)} 
-                            className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none"
-                        >
-                           <option>Airline</option>
-                           <option>Bank</option>
-                           <option>Telecom</option>
-                           <option>Insurance</option>
-                           <option>Blank</option>
-                        </select>
-                    </div>
-                    <button 
-                        data-id="btn-create-agent"
-                        onClick={handleCreate} 
-                        className="w-full bg-brand-teal text-eburon-bg font-semibold py-2 rounded-lg hover:opacity-90 transition-opacity"
-                    >
-                        Create Agent
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-
-const App: React.FC = () => {
-  const [view, setView] = useState<View>('Home');
-  const [agents, setAgents] = useState<Agent[]>(DUMMY_AGENTS);
-  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(agents[0] || null);
-  const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
-  const [versioningAgent, setVersioningAgent] = useState<{ agent: Agent; builderState?: Agent; } | null>(null);
-  const [callHistory, setCallHistory] = useState<CallRecord[]>([]);
-
-  useEffect(() => {
-    try {
-        const savedHistory = localStorage.getItem('eburon-call-history');
-        if (savedHistory) {
-            setCallHistory(JSON.parse(savedHistory));
-        }
-    } catch (error) {
-        console.error("Failed to load call history from localStorage:", error);
-    }
-  }, []);
-
-  const addCallToHistory = (call: CallRecord) => {
-    setCallHistory(prev => {
-        const newHistory = [call, ...prev];
-        try {
-            localStorage.setItem('eburon-call-history', JSON.stringify(newHistory));
-        } catch (error) {
-            console.error("Failed to save call history to localStorage:", error);
-        }
-        return newHistory;
-    });
-  };
-  
-  const handleStartTest = (agent: Agent) => {
-    setSelectedAgent(agent);
-    setView('Calls');
-  };
-
-  const saveAgentVersion = (agentId: string, description: string, stateToSave: Agent) => {
-    setAgents(prev => prev.map(agent => {
-        if (agent.id === agentId) {
-            const nextVersionNumber = agent.history.length > 0 ? Math.max(...agent.history.map(v => v.versionNumber)) + 1 : 1;
-            const newVersion: AgentVersion = {
-                id: `${agentId}-v${nextVersionNumber}-${Date.now()}`,
-                versionNumber: nextVersionNumber,
-                createdAt: new Date().toLocaleString(),
-                description: description || `Version ${nextVersionNumber}`,
-                name: stateToSave.name,
-                status: stateToSave.status,
-                language: stateToSave.language,
-                voice: stateToSave.voice,
-                personaShortText: stateToSave.personaShortText,
-                persona: stateToSave.persona,
-                tools: stateToSave.tools,
-            };
-            return { ...agent, history: [...agent.history, newVersion] };
-        }
-        return agent;
-    }));
-  };
-
-  const restoreAgentVersion = (agentId: string, versionId: string) => {
-      setAgents(prev => prev.map(agent => {
-          if (agent.id === agentId) {
-              const versionToRestore = agent.history.find(v => v.id === versionId);
-              if (!versionToRestore) return agent;
-
-              const restoredAgent = {
-                  ...agent,
-                  name: versionToRestore.name,
-                  status: versionToRestore.status,
-                  language: versionToRestore.language,
-                  voice: versionToRestore.voice,
-                  personaShortText: versionToRestore.personaShortText,
-                  persona: versionToRestore.persona,
-                  tools: versionToRestore.tools,
-                  updatedAt: 'Just now',
-              };
-
-              // Also update the selected agent if it's the one being restored
-              if (selectedAgent?.id === agentId) {
-                  setSelectedAgent(restoredAgent);
-              }
-              
-              return restoredAgent;
-          }
-          return agent;
-      }));
-  };
-
-  const renderView = () => {
-    switch (view) {
-      case 'Home':
-        return <HomePage />;
-      case 'Agents':
-        return <AgentsListPage />;
-      case 'Calls':
-        return <CallsPage />;
-      case 'Knowledge':
-        return <KnowledgePage />;
-      case 'Voices':
-        return <VoicesPage />;
-      case 'Deploy':
-        return <DeployPage />;
-      case 'AgentBuilder':
-        return <AgentBuilderPage />;
-      case 'Settings':
-        return <SettingsPage />;
-      case 'CallHistory':
-          return <CallHistoryPage />;
-      default:
-        return <HomePage />;
-    }
-  };
-
-  return (
-    <AppContext.Provider value={{ 
-        view, setView, 
-        selectedAgent, setSelectedAgent, 
-        agents, setAgents, 
-        isQuickCreateOpen, setIsQuickCreateOpen, 
+    const contextValue: AppContextType = {
+        view, setView,
+        selectedAgent, setSelectedAgent,
+        agents, setAgents,
+        isQuickCreateOpen, setIsQuickCreateOpen,
         handleStartTest,
         versioningAgent, setVersioningAgent,
         saveAgentVersion, restoreAgentVersion,
-        callHistory, addCallToHistory
-    }}>
-      <div className="flex h-screen w-full font-sans">
-        <LeftNav />
-        <main className="flex-1 flex flex-col">
-          <Header />
-          <div className="flex-1 overflow-y-auto">
-            {renderView()}
-          </div>
-        </main>
-        <RightPanel />
-        {isQuickCreateOpen && <QuickCreateModal />}
-        {versioningAgent && (
-            <AgentVersionsModal 
-                data={versioningAgent}
-                onClose={() => setVersioningAgent(null)}
-            />
-        )}
-      </div>
-    </AppContext.Provider>
-  );
+        callHistory, addCallToHistory,
+    };
+
+    const renderView = () => {
+        switch (view) {
+            case 'Home': return <HomePage />;
+            case 'Agents': return <AgentsListPage />;
+            case 'Calls': return <CallsPage />;
+            case 'Knowledge': return <KnowledgePage />;
+            case 'Voices': return <VoicesPage />;
+            case 'Deploy': return <DeployPage />;
+            case 'AgentBuilder': return <AgentBuilderPage />;
+            case 'Settings': return <SettingsPage />;
+            case 'CallHistory': return <CallHistoryPage />;
+            default: return <HomePage />;
+        }
+    };
+
+    return (
+        <AppContext.Provider value={contextValue}>
+            <div className="bg-eburon-bg text-eburon-text font-sans h-screen w-screen flex flex-col overflow-hidden">
+                <Header />
+                <div className="flex flex-1 min-h-0">
+                    <LeftNav />
+                    <main className="flex-1 overflow-y-auto">
+                        {renderView()}
+                    </main>
+                    <RightPanel />
+                </div>
+            </div>
+            {versioningAgent && <AgentVersionsModal data={versioningAgent} onClose={() => setVersioningAgent(null)} />}
+            {isQuickCreateOpen && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm" onClick={() => setIsQuickCreateOpen(false)}>
+                    <div className="bg-eburon-card border border-eburon-border rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-semibold">Create New Agent</h2>
+                            <button onClick={() => setIsQuickCreateOpen(false)}><X size={20} className="text-eburon-muted hover:text-eburon-text"/></button>
+                        </div>
+                        <form onSubmit={handleCreateAgent}>
+                            <label htmlFor="newAgentName" className="block text-sm font-medium text-eburon-muted mb-2">Agent Name</label>
+                            <input
+                                id="newAgentName"
+                                type="text"
+                                value={newAgentName}
+                                onChange={e => setNewAgentName(e.target.value)}
+                                placeholder="e.g., Banking Support Bot"
+                                className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none"
+                            />
+                            <div className="mt-6 flex justify-end space-x-3">
+                                <button type="button" onClick={() => setIsQuickCreateOpen(false)} className="px-4 py-2 rounded-lg bg-eburon-border hover:bg-white/10">Cancel</button>
+                                <button type="submit" className="px-4 py-2 rounded-lg bg-brand-teal text-eburon-bg font-semibold hover:opacity-90 disabled:opacity-50" disabled={!newAgentName.trim()}>Create Agent</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </AppContext.Provider>
+    );
 };
 
 export default App;
