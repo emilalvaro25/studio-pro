@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { decode, decodeAudioData } from '../services/audioUtils';
@@ -191,10 +193,15 @@ const AgentBuilderPage: React.FC = () => {
                     </div>
                      <div>
                         <label htmlFor="language" className="block text-sm font-medium text-eburon-muted mb-2">Language</label>
-                        <select id="language" name="language" value={formData.language} onChange={handleInputChange} className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none">
-                            <option value="EN">English</option>
-                            <option value="ES">Spanish</option>
-                            <option value="FR">French</option>
+                        <select 
+                            id="language" 
+                            name="language" 
+                            value={formData.language} 
+                            onChange={handleInputChange} 
+                            disabled 
+                            className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none disabled:opacity-70 disabled:cursor-not-allowed"
+                        >
+                            <option value="Multilingual">Multilingual (Auto-Detect)</option>
                         </select>
                     </div>
                 </div>
@@ -292,9 +299,12 @@ const AgentBuilderPage: React.FC = () => {
                          <label className="block text-sm font-medium text-eburon-muted mb-2">Attached</label>
                          <div className="flex flex-wrap gap-2">
                             {formData.tools.includes('Knowledge') ? (
-                                <span className="bg-eburon-border text-eburon-text px-3 py-1 rounded-full text-sm">Airlines FAQ.pdf</span>
+                                <>
+                                    <span className="bg-brand-teal/20 text-brand-teal px-3 py-1 rounded-full text-sm font-medium">Hyper-Realistic AI CSR KB.docx (Foundation)</span>
+                                    <span className="bg-eburon-border text-eburon-text px-3 py-1 rounded-full text-sm">Airlines FAQ.pdf</span>
+                                </>
                             ) : (
-                                <p className="text-sm text-eburon-muted">No knowledge base attached. Enable the 'Knowledge' tool in the Brain tab.</p>
+                                <p className="text-sm text-eburon-muted">Enable the 'Knowledge' tool in the Brain tab to attach the foundational KB.</p>
                             )}
                          </div>
                      </div>

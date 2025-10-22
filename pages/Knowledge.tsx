@@ -11,6 +11,7 @@ interface KnowledgeBase {
 }
 
 const initialKnowledgeBases: KnowledgeBase[] = [
+    { id: 4, source: 'Hyper-Realistic AI CSR KB.docx', chunks: 128, status: 'Indexed', updated: 'Just now' },
     { id: 1, source: 'Airlines FAQ.pdf', chunks: 152, status: 'Indexed', updated: '2 hours ago' },
     { id: 2, source: 'https://bank.example/terms', chunks: 88, status: 'Indexed', updated: '1 day ago' },
     { id: 3, source: 'Telecom Plans 2024.docx', chunks: 210, status: 'Indexed', updated: '5 minutes ago' },
