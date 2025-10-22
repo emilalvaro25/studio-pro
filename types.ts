@@ -5,6 +5,13 @@ export type View = 'Home' | 'Agents' | 'Calls' | 'Knowledge' | 'Voices' | 'Deplo
 export type AgentStatus = 'Draft' | 'Ready' | 'Live';
 export type AgentTool = 'Knowledge' | 'Webhook' | 'Calendar' | 'Payments';
 
+export type IntroSpielType = 'Concise' | 'Warm' | 'Custom';
+
+export interface IntroSpiel {
+  type: IntroSpielType;
+  customText?: string;
+}
+
 export interface AgentVersion {
   id: string; // Unique ID for the version, e.g., a timestamp
   versionNumber: number;
@@ -19,6 +26,7 @@ export interface AgentVersion {
   personaShortText: string;
   persona: string;
   tools: AgentTool[];
+  introSpiel: IntroSpiel;
 }
 
 
@@ -34,6 +42,7 @@ export interface Agent {
   persona: string;
   tools: AgentTool[];
   history: AgentVersion[];
+  introSpiel: IntroSpiel;
 }
 
 export interface TranscriptLine {

@@ -24,6 +24,9 @@ const SOUND_SOURCES = {
     FAIL_TONE: [
         { src: 'https://cdn.pixabay.com/audio/2022/08/03/audio_533130d7b7.mp3', type: 'audio/mpeg' }
     ],
+    BG_AMBIENCE: [
+        { src: 'https://cdn.pixabay.com/audio/2022/09/23/audio_7b80d603a1.mp3', type: 'audio/mpeg' },
+    ]
 };
 
 const DialerButton: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void, 'data-id'?: string; disabled?: boolean }> = ({ children, className, onClick, 'data-id': dataId, disabled }) => (
@@ -143,6 +146,7 @@ const CallsPage: React.FC = () => {
     const holdMusicRef = useRef<HTMLAudioElement | null>(null);
     const ringToneRef = useRef<HTMLAudioElement | null>(null);
     const failToneRef = useRef<HTMLAudioElement | null>(null);
+    const bgAmbienceRef = useRef<HTMLAudioElement | null>(null);
     const ivrTimeoutRef = useRef<number | null>(null);
     const callStatusRef = useRef(callStatus);
 
@@ -154,7 +158,6 @@ const CallsPage: React.FC = () => {
 
     const uiAudioContextRef = useRef<AudioContext | null>(null);
     const uiMasterGainRef = useRef<GainNode | null>(null);
-    const bgNodesRef = useRef<{ src: AudioBufferSourceNode; modOsc: OscillatorNode; } | null>(null);
 
     const ensureUiAudioContext = useCallback(() => {
         if (!uiAudioContextRef.current) {
@@ -224,45 +227,20 @@ const CallsPage: React.FC = () => {
         failToneRef.current?.play().catch(e => console.error("Fail tone failed to play:", e));
     }, [stopFailTone]);
 
-
-    const startBgAmbience = useCallback(() => {
-        const ctx = ensureUiAudioContext();
-        if (!ctx || !uiMasterGainRef.current || bgNodesRef.current) return;
-        
-        const noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
-        const data = noiseBuf.getChannelData(0);
-        for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-
-        const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
-        const bp1 = ctx.createBiquadFilter(); bp1.type = "bandpass"; bp1.frequency.value = 1000; bp1.Q.value = 0.7;
-        const bp2 = ctx.createBiquadFilter(); bp2.type = "bandpass"; bp2.frequency.value = 600; bp2.Q.value = 0.6;
-        const mainGain = ctx.createGain(); mainGain.gain.value = 0.05; // very quiet
-        
-        const modOsc = ctx.createOscillator(); modOsc.type = "sine"; modOsc.frequency.value = 0.25;
-        const modGain = ctx.createGain(); modGain.gain.value = 0.1;
-        
-        src.connect(bp1).connect(bp2).connect(mainGain).connect(uiMasterGainRef.current);
-        modOsc.connect(modGain).connect(mainGain.gain);
-        
-        src.start(); modOsc.start();
-        bgNodesRef.current = { src, modOsc };
-    }, [ensureUiAudioContext]);
-    
-    const stopBgAmbience = useCallback(() => {
-        const nodes = bgNodesRef.current;
-        if (!nodes) return;
-        try { nodes.src.stop(); nodes.modOsc.stop(); } catch {}
-        bgNodesRef.current = null;
-    }, []);
-    // --- End Web Audio ---
-
     useEffect(() => { callStatusRef.current = callStatus; }, [callStatus]);
     useEffect(() => { transcriptRef.current = transcript; }, [transcript]);
 
     useEffect(() => {
-        if (isBgSoundActive) startBgAmbience();
-        else stopBgAmbience();
-    }, [isBgSoundActive, startBgAmbience, stopBgAmbience]);
+        const audioEl = bgAmbienceRef.current;
+        if (!audioEl) return;
+
+        if (isBgSoundActive) {
+            audioEl.volume = 0.3; // Keep it subtle
+            audioEl.play().catch(e => console.error("Background ambience failed to play:", e));
+        } else {
+            audioEl.pause();
+        }
+    }, [isBgSoundActive]);
 
     const addTranscript = useCallback((line: Omit<TranscriptLine, 'timestamp'>) => {
         setTranscript(prev => [...prev, { ...line, timestamp: Date.now() }]);
@@ -582,6 +560,9 @@ const CallsPage: React.FC = () => {
             </audio>
             <audio ref={failToneRef} preload="auto">
                 {SOUND_SOURCES.FAIL_TONE.map(s => <source key={s.src} src={s.src} type={s.type} />)}
+            </audio>
+            <audio ref={bgAmbienceRef} loop preload="auto">
+                {SOUND_SOURCES.BG_AMBIENCE.map(s => <source key={s.src} src={s.src} type={s.type} />)}
             </audio>
 
             <div className="w-full max-w-6xl h-[85vh] grid grid-cols-2 gap-8">

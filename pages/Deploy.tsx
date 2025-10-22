@@ -21,6 +21,9 @@ const DeployPage: React.FC = () => {
 
     const currentAgent = agents.find(a => a.id === selectedAgentId);
     const agentSlug = currentAgent ? currentAgent.name.toLowerCase().replace(/\s+/g, '-') : 'select-an-agent';
+    const userIdPlaceholder = '[YOUR_USER_ID]'; // Generic placeholder for the user ID
+    const deploymentSlug = `${agentSlug}-${userIdPlaceholder}`;
+
 
     return (
         <div className="p-6">
@@ -53,9 +56,9 @@ const DeployPage: React.FC = () => {
                  <div>
                     <label className="block text-sm font-medium text-eburon-muted mb-2">3. Endpoints & Snippets</label>
                     <div className="space-y-4">
-                        <SnippetCard title="HTTPS POST" content="https://api.eburon.studio/v1/calls" />
-                        <SnippetCard title="SIP URI" content={`sip:agent-${agentSlug}@eburon.studio`} />
-                        <SnippetCard title="WebRTC Widget" content={`<EburonCallWidget agent="agent-${agentSlug}" />`} />
+                        <SnippetCard title="HTTPS POST" content={`https://api.eburon.studio/v1/calls/${deploymentSlug}`} />
+                        <SnippetCard title="SIP URI" content={`sip:${deploymentSlug}@eburon.studio`} />
+                        <SnippetCard title="WebRTC Widget" content={`<EburonCallWidget agent="${deploymentSlug}" />`} />
                     </div>
                 </div>
                 <button className="w-full flex items-center justify-center space-x-2 bg-eburon-border text-eburon-text font-semibold px-4 py-2 rounded-lg hover:bg-white/10 transition-colors">

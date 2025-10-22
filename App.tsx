@@ -279,6 +279,7 @@ const initialAgents: Agent[] = [
         personaShortText: 'A friendly and helpful airline assistant for premium customers.',
         persona: initialPersona,
         tools: ['Knowledge', 'Calendar'],
+        introSpiel: { type: 'Warm' },
         history: [
             {
                 id: 'v1',
@@ -293,6 +294,7 @@ const initialAgents: Agent[] = [
                 personaShortText: 'A friendly and helpful airline assistant for premium customers.',
                 persona: initialPersona,
                 tools: ['Knowledge', 'Calendar'],
+                introSpiel: { type: 'Warm' },
             }
         ],
     },
@@ -307,6 +309,7 @@ const initialAgents: Agent[] = [
         personaShortText: 'A secure and knowledgeable banking assistant.',
         persona: createSystemPrompt('Global Bank Bot', 'Global Bank', 'A clear, authoritative voice that inspires confidence. Pacing is measured and professional.'),
         tools: ['Payments', 'Webhook'],
+        introSpiel: { type: 'Concise' },
         history: [],
     },
 ];
@@ -349,6 +352,7 @@ const App: React.FC = () => {
                     personaShortText: stateToSave.personaShortText,
                     persona: stateToSave.persona,
                     tools: stateToSave.tools,
+                    introSpiel: stateToSave.introSpiel,
                 };
                 return { ...agent, history: [...agent.history, newVersion] };
             }
@@ -371,6 +375,7 @@ const App: React.FC = () => {
                         personaShortText: versionToRestore.personaShortText,
                         persona: versionToRestore.persona,
                         tools: versionToRestore.tools,
+                        introSpiel: versionToRestore.introSpiel,
                         updatedAt: 'Just now',
                     };
                 }
@@ -403,6 +408,7 @@ const App: React.FC = () => {
             persona: createSystemPrompt(newAgentName, "the company", voiceDescription),
             tools: [],
             history: [],
+            introSpiel: { type: 'Concise' },
         };
 
         setAgents(prev => [newAgent, ...prev]);

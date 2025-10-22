@@ -46,6 +46,7 @@ const VersionComparer: React.FC<{ version1: AgentVersion; version2: AgentVersion
             <div className="overflow-y-auto space-y-2 pr-2">
                 <DiffRow label="Name" val1={version1.name} val2={version2.name} />
                 <DiffRow label="Persona (Short)" val1={version1.personaShortText} val2={version2.personaShortText} />
+                <DiffRow label="Intro Spiel" val1={version1.introSpiel} val2={version2.introSpiel} isJson />
                 <DiffRow label="Voice" val1={version1.voice} val2={version2.voice} />
                 <DiffRow label="Voice Description" val1={version1.voiceDescription} val2={version2.voiceDescription} />
                 <DiffRow label="Tools" val1={version1.tools} val2={version2.tools} isJson />
@@ -78,6 +79,7 @@ const AgentVersionsModal: React.FC<AgentVersionsModalProps> = ({ data, onClose }
             latestVersion.voice !== currentState.voice ||
             latestVersion.voiceDescription !== currentState.voiceDescription ||
             JSON.stringify(latestVersion.tools.sort()) !== JSON.stringify(currentState.tools.sort()) ||
+            JSON.stringify(latestVersion.introSpiel) !== JSON.stringify(currentState.introSpiel) ||
             latestVersion.persona !== currentState.persona
         );
     }, [currentState, sortedHistory]);

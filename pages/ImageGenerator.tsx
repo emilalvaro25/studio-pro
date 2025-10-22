@@ -4,8 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { decode, decodeAudioData } from '../services/audioUtils';
 import { useAppContext, createSystemPrompt } from '../App';
-import { Play, Loader2, Save, User, Brain, Voicemail, Library, TestTube, Phone, CheckSquare, Square, Volume2, X, History } from 'lucide-react';
-import { Agent, AgentTool } from '../types';
+import { Play, Loader2, Save, User, Brain, Voicemail, Library, TestTube, Phone, CheckSquare, Square, Volume2, X, History, Server } from 'lucide-react';
+import { Agent, AgentTool, IntroSpielType } from '../types';
 
 const voices = [
     { name: 'Natural Warm', prebuilt: 'Kore', description: 'Friendly and engaging.' },
@@ -18,7 +18,7 @@ const voices = [
 
 const ALL_TOOLS: AgentTool[] = ['Knowledge', 'Webhook', 'Calendar', 'Payments'];
 
-type BuilderTab = 'Identity' | 'Brain' | 'Voice' | 'Knowledge' | 'Test';
+type BuilderTab = 'Identity' | 'Brain' | 'Voice' | 'Knowledge' | 'Telephony' | 'Test';
 
 const TabButton: React.FC<{
     isActive: boolean;
@@ -68,7 +68,7 @@ const AgentBuilderPage: React.FC = () => {
     const { selectedAgent, setView, agents, setAgents, handleStartTest, setVersioningAgent } = useAppContext();
     const [activeTab, setActiveTab] = useState<BuilderTab>('Identity');
     
-    const [formData, setFormData] = useState<Agent | null>(selectedAgent);
+    const [formData, setFormData] = useState<Agent | null>(null);
     const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
     
     const [speakingRate, setSpeakingRate] = useState(1.0);
@@ -76,10 +76,22 @@ const AgentBuilderPage: React.FC = () => {
     const [playingVoice, setPlayingVoice] = useState<string | null>(null);
     const [loadingVoice, setLoadingVoice] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    
+    const [telephonyProvider, setTelephonyProvider] = useState<'Twilio' | 'Plivo' | null>('Twilio');
 
     useEffect(() => {
-        setFormData(selectedAgent);
+        if (selectedAgent) {
+            // Ensure introSpiel exists for backward compatibility
+            const agentWithDefaults = {
+                ...selectedAgent,
+                introSpiel: selectedAgent.introSpiel || { type: 'Concise', customText: '' }
+            };
+            setFormData(agentWithDefaults);
+        } else {
+            setFormData(null);
+        }
     }, [selectedAgent]);
+
 
     if (!selectedAgent || !formData) {
         return (
@@ -190,6 +202,53 @@ const AgentBuilderPage: React.FC = () => {
         }
     };
     
+    const getCompanyName = () => {
+        // Simple logic to infer company name from agent name for placeholders
+        if (formData.name.toLowerCase().includes('turkish airlines')) return 'Turkish Airlines';
+        if (formData.name.toLowerCase().includes('bank')) return 'Global Bank';
+        return 'the company';
+    }
+
+    const spielTemplates: Record<Exclude<IntroSpielType, 'Custom'>, string> = {
+        'Concise': `Thank you for calling ${getCompanyName()}. You're speaking with ${formData.name}. How may I assist you?`,
+        'Warm': `Hello, and thank you for calling ${getCompanyName()}. My name is ${formData.name}, and I'm here to help. How are you today?`
+    };
+
+    const getSpielText = (): string => {
+        if (!formData.introSpiel) return '';
+        const { type, customText } = formData.introSpiel;
+        if (type === 'Custom') {
+            return customText || '';
+        }
+        return spielTemplates[type];
+    };
+
+    const handleSpielTypeChange = (type: IntroSpielType) => {
+        setFormData(prev => {
+            if (!prev) return null;
+            return {
+                ...prev,
+                introSpiel: {
+                    ...prev.introSpiel,
+                    type: type,
+                    // If switching to custom and no text exists, start with a template
+                    customText: (type === 'Custom' && !prev.introSpiel.customText) ? spielTemplates['Concise'] : prev.introSpiel.customText
+                }
+            };
+        });
+    };
+
+    const handleCustomSpielChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const newText = e.target.value;
+        setFormData(prev => {
+            if (!prev || prev.introSpiel.type !== 'Custom') return prev;
+            return {
+                ...prev,
+                introSpiel: { ...prev.introSpiel, customText: newText }
+            };
+        });
+    };
+    
     const renderContent = () => {
         switch(activeTab) {
             case 'Identity': return (
@@ -204,6 +263,29 @@ const AgentBuilderPage: React.FC = () => {
                         <button onClick={() => setIsPromptModalOpen(true)} className="text-sm text-brand-teal hover:underline mt-2">
                             Edit Full System Prompt
                         </button>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-eburon-muted mb-2">Introduction Spiel</label>
+                        <div className="space-y-2">
+                            <div className="flex space-x-2">
+                                {(['Concise', 'Warm', 'Custom'] as IntroSpielType[]).map(type => (
+                                    <button 
+                                        key={type} 
+                                        onClick={() => handleSpielTypeChange(type)}
+                                        className={`flex-1 p-2 text-sm rounded-lg border-2 transition-colors ${formData.introSpiel.type === type ? 'border-brand-teal bg-brand-teal/10' : 'border-eburon-border hover:border-eburon-muted'}`}
+                                    >
+                                        {type}
+                                    </button>
+                                ))}
+                            </div>
+                            <textarea
+                                value={getSpielText()}
+                                onChange={handleCustomSpielChange}
+                                disabled={formData.introSpiel.type !== 'Custom'}
+                                rows={3}
+                                className="w-full bg-eburon-bg border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none font-mono text-xs disabled:opacity-70"
+                            />
+                        </div>
                     </div>
                      <div>
                         <label htmlFor="language" className="block text-sm font-medium text-eburon-muted mb-2">Language</label>
@@ -338,6 +420,83 @@ const AgentBuilderPage: React.FC = () => {
                      </div>
                  </div>
             );
+            case 'Telephony': return (
+                 <div className="space-y-6 max-w-lg">
+                    <div>
+                        <h3 className="text-lg font-semibold text-eburon-text">Telephony Integration</h3>
+                        <p className="text-sm text-eburon-muted">Connect your agent to a phone number to handle live calls.</p>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-eburon-muted mb-2">Select Provider</label>
+                        <div className="grid grid-cols-2 gap-4">
+                            <button
+                                onClick={() => setTelephonyProvider('Twilio')}
+                                className={`p-4 rounded-xl border-2 text-center transition-all ${
+                                    telephonyProvider === 'Twilio'
+                                    ? 'border-brand-teal bg-brand-teal/10'
+                                    : 'border-eburon-border hover:border-eburon-muted/50'
+                                }`}
+                            >
+                                <h4 className="font-semibold text-eburon-text">Twilio</h4>
+                            </button>
+                            <button
+                                onClick={() => setTelephonyProvider('Plivo')}
+                                className={`p-4 rounded-xl border-2 text-center transition-all ${
+                                    telephonyProvider === 'Plivo'
+                                    ? 'border-brand-teal bg-brand-teal/10'
+                                    : 'border-eburon-border hover:border-eburon-muted/50'
+                                }`}
+                            >
+                                <h4 className="font-semibold text-eburon-text">Plivo</h4>
+                            </button>
+                        </div>
+                    </div>
+
+                    {telephonyProvider === 'Twilio' && (
+                        <div className="space-y-4 p-4 bg-eburon-bg rounded-lg border border-eburon-border">
+                            <h4 className="font-semibold">Twilio Configuration</h4>
+                            <div>
+                                <label htmlFor="twilioSid" className="block text-xs font-medium text-eburon-muted mb-1">Account SID</label>
+                                <input id="twilioSid" type="text" placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" className="w-full bg-eburon-border/50 border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none"/>
+                            </div>
+                            <div>
+                                <label htmlFor="twilioToken" className="block text-xs font-medium text-eburon-muted mb-1">Auth Token</label>
+                                <input id="twilioToken" type="password" placeholder="••••••••••••••••••••••••••••" className="w-full bg-eburon-border/50 border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none"/>
+                            </div>
+                            <div>
+                                <label htmlFor="twilioPhoneSid" className="block text-xs font-medium text-eburon-muted mb-1">Phone Number SID</label>
+                                <input id="twilioPhoneSid" type="text" placeholder="PNxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" className="w-full bg-eburon-border/50 border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none"/>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {telephonyProvider === 'Plivo' && (
+                        <div className="space-y-4 p-4 bg-eburon-bg rounded-lg border border-eburon-border">
+                            <h4 className="font-semibold">Plivo Configuration</h4>
+                            <div>
+                                <label htmlFor="plivoAuthId" className="block text-xs font-medium text-eburon-muted mb-1">Auth ID</label>
+                                <input id="plivoAuthId" type="text" placeholder="MAxxxxxxxxxxxxxxxxxx" className="w-full bg-eburon-border/50 border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none"/>
+                            </div>
+                            <div>
+                                <label htmlFor="plivoToken" className="block text-xs font-medium text-eburon-muted mb-1">Auth Token</label>
+                                <input id="plivoToken" type="password" placeholder="••••••••••••••••••••••••••••" className="w-full bg-eburon-border/50 border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none"/>
+                            </div>
+                            <div>
+                                <label htmlFor="plivoAppId" className="block text-xs font-medium text-eburon-muted mb-1">Application ID</label>
+                                <input id="plivoAppId" type="text" placeholder="123456789012345678" className="w-full bg-eburon-border/50 border border-eburon-border rounded-lg p-2 focus:ring-2 focus:ring-brand-teal focus:outline-none"/>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="pt-4 border-t border-eburon-border">
+                        <button className="flex items-center space-x-2 bg-brand-teal text-eburon-bg font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
+                            <Save size={16} />
+                            <span>Save Configuration</span>
+                        </button>
+                    </div>
+                </div>
+            );
             case 'Test': return (
                 <div className="flex flex-col items-center justify-center h-full space-y-4 text-center">
                     <div className="w-24 h-24 rounded-full flex items-center justify-center bg-ok/10 text-ok">
@@ -360,6 +519,7 @@ const AgentBuilderPage: React.FC = () => {
         { id: 'Brain', icon: <Brain size={18} />, label: 'Brain' },
         { id: 'Voice', icon: <Voicemail size={18} />, label: 'Voice' },
         { id: 'Knowledge', icon: <Library size={18} />, label: 'Knowledge' },
+        { id: 'Telephony', icon: <Server size={18} />, label: 'Telephony' },
         { id: 'Test', icon: <TestTube size={18} />, label: 'Test' },
     ];
 
