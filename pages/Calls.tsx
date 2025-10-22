@@ -24,22 +24,48 @@ const drawVisualizer = (
     canvas: HTMLCanvasElement,
     color: string
 ) => {
-    const bufferLength = analyser.frequencyBinCount;
+    const bufferLength = analyser.frequencyBinCount; // e.g., 128 with fftSize=256
     const dataArray = new Uint8Array(bufferLength);
     analyser.getByteFrequencyData(dataArray);
 
     canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const barWidth = (canvas.width / bufferLength) * 2.5;
-    let x = 0;
+    // Display fewer bars for a cleaner look.
+    const numBars = 64;
+    const barWidth = canvas.width / numBars;
 
-    for (let i = 0; i < bufferLength; i++) {
-        const barHeight = dataArray[i] / 2;
-        canvasCtx.fillStyle = color;
-        canvasCtx.fillRect(x, canvas.height - barHeight / 2, barWidth, barHeight);
-        x += barWidth + 1;
+    const gradient = canvasCtx.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0.1, color);
+    gradient.addColorStop(0.6, `${color}A0`);
+    gradient.addColorStop(1, `${color}30`);
+
+    canvasCtx.fillStyle = gradient;
+    
+    // We have more data points (e.g., 128) than bars (64), so let's average them.
+    const step = Math.floor(bufferLength / numBars);
+
+    for (let i = 0; i < numBars; i++) {
+        let sum = 0;
+        // Average a few data points for each bar
+        for (let j = 0; j < step; j++) {
+            sum += dataArray[i * step + j];
+        }
+        const avg = step > 0 ? sum / step : dataArray[i];
+
+        // Apply a non-linear scale to make quiet sounds more visible and prevent clipping.
+        // This makes the visualizer feel more "alive".
+        const barHeight = Math.pow(avg / 255.0, 2.2) * canvas.height;
+
+        // Draw from the vertical center
+        const x = i * barWidth;
+        const y = (canvas.height - barHeight) / 2;
+
+        if (barHeight > 0) {
+            canvasCtx.fillRect(x, y, barWidth - 1, barHeight); // -1 for spacing
+        }
     }
 };
+
 
 const VOICE_MAP: { [key: string]: string } = {
     'Natural Warm': 'Kore',
