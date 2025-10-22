@@ -3,7 +3,7 @@ import { createClient, SupabaseClient, Session, User } from '@supabase/supabase-
 import { Header } from './components/Header';
 import { LeftNav } from './components/LeftNav';
 import { RightPanel } from './components/RightPanel';
-import { Agent, View, AgentVersion, CallRecord, Notification, NotificationType, Theme, KnowledgeBase } from './types';
+import { Agent, View, AgentVersion, CallRecord, Notification, NotificationType, Theme, KnowledgeBase, TemplateAgent } from './types';
 import { X, CheckCircle, XCircle, Info, AlertTriangle, Loader2 } from 'lucide-react';
 
 // Lazy load page components for better performance
@@ -16,7 +16,6 @@ const AgentBuilderPage = lazy(() => import('./pages/ImageGenerator'));
 const SettingsPage = lazy(() => import('./pages/Settings'));
 const CallHistoryPage = lazy(() => import('./pages/CallHistory'));
 const DatabasePage = lazy(() => import('./pages/Database'));
-const AuthPage = lazy(() => import('./pages/Auth'));
 const ProfilePage = lazy(() => import('./pages/Profile'));
 const TemplatesPage = lazy(() => import('./pages/Templates'));
 const IntegrationsPage = lazy(() => import('./pages/Integrations'));
@@ -30,7 +29,7 @@ const getSupabaseClient = (): SupabaseClient | null => {
     if (url && key) {
         return createClient(url, key);
     }
-    console.warn("Supabase credentials not found in environment variables.");
+    console.warn("Supabase credentials not found. The application will run in offline demo mode.");
     return null;
 };
 const supabase = getSupabaseClient();
@@ -171,6 +170,7 @@ interface AppContextType {
   uploadKnowledgeFile: (file: File) => Promise<void>;
   deleteKnowledgeBase: (kb: KnowledgeBase) => Promise<void>;
   supabase: SupabaseClient | null;
+  isDemoMode: boolean;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -430,6 +430,7 @@ const PageLoader: React.FC = () => (
 const App: React.FC = () => {
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
+    const [isDemoMode, setIsDemoMode] = useState(false);
     const [view, setView] = useState<View>('Home');
     const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
     const [agents, setAgents] = useState<Agent[]>([]);
@@ -468,22 +469,36 @@ const App: React.FC = () => {
     }, [removeNotification]);
 
     useEffect(() => {
+        setIsLoading(true);
         if (supabase) {
-            supabase.auth.getSession().then(({ data: { session } }) => {
-                setSession(session);
-                setUser(session?.user ?? null);
+            const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+                if (_event === 'INITIAL_SESSION' && !session) {
+                    const { data: anonData, error } = await supabase.auth.signInAnonymously();
+                    if (error) {
+                        console.warn("Anonymous sign-in error:", error.message, "Entering demo mode.");
+                        addNotification("Could not connect to backend. Running in offline demo mode. Your work will not be saved.", "warn");
+                        setIsDemoMode(true);
+                        setSession(null);
+                        setUser(null);
+                    } else if (anonData.session) {
+                        setSession(anonData.session);
+                        setUser(anonData.user);
+                    }
+                } else {
+                    setSession(session);
+                    setUser(session?.user ?? null);
+                }
                 setIsLoading(false);
             });
-
-            const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-                setSession(session);
-                setUser(session?.user ?? null);
-            });
+    
             return () => subscription.unsubscribe();
         } else {
+            // If supabase client failed to initialize, go straight to demo mode.
+            addNotification("Supabase not configured. Running in offline demo mode.", "warn");
+            setIsDemoMode(true);
             setIsLoading(false);
         }
-    }, []);
+    }, [addNotification]);
 
     useEffect(() => {
         const handleResize = () => {
@@ -502,8 +517,6 @@ const App: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        if (!session) return;
-
         const loadData = async () => {
             setIsLoading(true);
             if (!supabase) {
@@ -556,9 +569,28 @@ const App: React.FC = () => {
                 setIsLoading(false);
             }
         };
-
-        loadData();
-    }, [session, addNotification]);
+        
+        if (isDemoMode) {
+            setIsLoading(true);
+            const demoTemplate: TemplateAgent = { name: 'Turkish Airlines Reservations', company: 'Turkish Airlines', category: 'Travel', language: 'Multilingual', voice: 'Amber', voiceDescription: 'Warm, welcoming, and professional, with a hint of an international accent.', personaShortText: 'Manages flight bookings, changes, and provides flight information.', tools: ['Calendar', 'Webhook'], introSpiel: { type: 'Warm' }, persona: '' };
+            const persona = createSystemPrompt(demoTemplate.name, demoTemplate.company, demoTemplate.voiceDescription);
+            const demoAgent: Agent = {
+                id: 'demo-agent-1',
+                name: demoTemplate.name,
+                status: 'Ready',
+                updatedAt: new Date().toLocaleString(),
+                history: [],
+                ...demoTemplate,
+                persona,
+            };
+            setAgents([demoAgent]);
+            setKnowledgeBases([]);
+            setCallHistory([]);
+            setIsLoading(false);
+        } else if (session) {
+            loadData();
+        }
+    }, [session, isDemoMode, addNotification]);
 
     useEffect(() => {
         if (!selectedAgent && agents.length > 0) {
@@ -572,104 +604,94 @@ const App: React.FC = () => {
     };
 
     const updateAgent = useCallback(async (agentToUpdate: Agent): Promise<boolean> => {
-        if (!supabase) {
-            addNotification('Supabase not configured.', 'error');
-            return false;
+        if (isDemoMode) {
+            setAgents(prev => prev.map(a => a.id === agentToUpdate.id ? agentToUpdate : a));
+            if (selectedAgent?.id === agentToUpdate.id) setSelectedAgent(agentToUpdate);
+            addNotification('Agent updated in demo mode. Changes are temporary.', 'info');
+            return true;
         }
+        if (!supabase) { addNotification('Supabase not configured.', 'error'); return false; }
         try {
             const { history, ...agentData } = agentToUpdate;
             const dbAgent = agentToDb(agentData);
             const { error } = await supabase.from('agents').update(dbAgent).eq('id', agentData.id);
             if (error) throw error;
-            
             setAgents(prev => prev.map(a => a.id === agentToUpdate.id ? agentToUpdate : a));
-            if (selectedAgent?.id === agentToUpdate.id) {
-                setSelectedAgent(agentToUpdate);
-            }
+            if (selectedAgent?.id === agentToUpdate.id) setSelectedAgent(agentToUpdate);
             return true;
         } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown error";
             addNotification(`Failed to save agent: ${message}`, 'error');
             return false;
         }
-    }, [addNotification, selectedAgent?.id]);
+    }, [addNotification, selectedAgent?.id, isDemoMode]);
     
     const deleteAgent = useCallback(async (agentId: string) => {
-        if (!supabase) {
-            addNotification('Supabase not configured.', 'error');
+        const deletedAgentName = agents.find(a => a.id === agentId)?.name || 'Agent';
+        const remainingAgents = agents.filter(a => a.id !== agentId);
+        
+        if (isDemoMode) {
+            setAgents(remainingAgents);
+            if (selectedAgent?.id === agentId) setSelectedAgent(remainingAgents.length > 0 ? remainingAgents[0] : null);
+            addNotification(`Agent "${deletedAgentName}" deleted in demo mode.`, 'info');
             return;
         }
+
+        if (!supabase) { addNotification('Supabase not configured.', 'error'); return; }
         try {
             const { error } = await supabase.from('agents').delete().eq('id', agentId);
             if (error) throw error;
-            const deletedAgentName = agents.find(a => a.id === agentId)?.name || 'Agent';
             
-            const remainingAgents = agents.filter(a => a.id !== agentId);
             setAgents(remainingAgents);
-
-            if (selectedAgent?.id === agentId) {
-                setSelectedAgent(remainingAgents.length > 0 ? remainingAgents[0] : null);
-            }
+            if (selectedAgent?.id === agentId) setSelectedAgent(remainingAgents.length > 0 ? remainingAgents[0] : null);
             addNotification(`Agent "${deletedAgentName}" deleted.`, 'success');
         } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown error";
             addNotification(`Failed to delete agent: ${message}`, 'error');
         }
-    }, [addNotification, agents, selectedAgent?.id]);
+    }, [addNotification, agents, selectedAgent?.id, isDemoMode]);
     
     const cloneAgent = useCallback(async (agentToClone: Agent) => {
-        if (!supabase || !user) {
-            addNotification('Supabase not configured or user not found.', 'error');
+        const { id, history, name, ...restOfAgent } = agentToClone;
+        const clonedAgentData = { ...restOfAgent, name: `${name} - Clone`, status: 'Draft' as const };
+        
+        if (isDemoMode) {
+            const newAgent: Agent = { ...clonedAgentData, id: `demo-agent-${Date.now()}`, history: [], updatedAt: new Date().toLocaleString() };
+            setAgents(prev => [newAgent, ...prev]);
+            setSelectedAgent(newAgent);
+            addNotification(`Agent "${newAgent.name}" created from clone in demo mode.`, 'info');
             return;
         }
+
+        if (!supabase || !user) { addNotification('Supabase not configured or user not found.', 'error'); return; }
         try {
-            const { id, history, name, ...restOfAgent } = agentToClone;
-            const clonedAgentData = {
-                ...restOfAgent,
-                name: `${name} - Clone`,
-                status: 'Draft' as const,
-            };
-            
             const { data, error } = await supabase.from('agents').insert({ ...agentToDb(clonedAgentData), user_id: user.id }).select();
             if (error) throw error;
-
-            const newAgentFromDb = dbToAgent(data[0]);
-            const newAgent: Agent = { ...newAgentFromDb, history: [] };
-            
+            const newAgent: Agent = { ...dbToAgent(data[0]), history: [] };
             setAgents(prev => [newAgent, ...prev]);
             setSelectedAgent(newAgent);
             addNotification(`Agent "${newAgent.name}" created from clone.`, 'success');
-
         } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown error";
             addNotification(`Failed to clone agent: ${message}`, 'error');
         }
-    }, [addNotification, user]);
+    }, [addNotification, user, isDemoMode]);
 
     const saveAgentVersion = async (agentId: string, description: string, stateToSave: Agent) => {
-        if (!supabase) {
-            addNotification('Supabase not configured.', 'error');
+         if (isDemoMode) {
+            addNotification('Versioning is disabled in demo mode.', 'warn');
             return;
         }
+        if (!supabase) { addNotification('Supabase not configured.', 'error'); return; }
         try {
             const agent = agents.find(a => a.id === agentId);
             if (!agent) throw new Error("Agent not found");
-
             const newVersionNumber = (agent.history[agent.history.length - 1]?.versionNumber || 0) + 1;
-            
             const { history, ...versionData } = stateToSave;
-            const versionToDb = {
-                ...agentToDb(versionData),
-                agent_id: agentId,
-                version_number: newVersionNumber,
-                description,
-            };
-
+            const versionToDb = { ...agentToDb(versionData), agent_id: agentId, version_number: newVersionNumber, description };
             const { data, error } = await supabase.from('agent_versions').insert(versionToDb).select();
             if (error) throw error;
-            
             const newVersion = dbToVersion(data[0]);
-            
             setAgents(prev => prev.map(a => a.id === agentId ? { ...a, history: [...a.history, newVersion] } : a));
             addNotification(`Version "${description}" saved for ${stateToSave.name}.`, 'success');
         } catch (error) {
@@ -679,18 +701,13 @@ const App: React.FC = () => {
     };
     
     const restoreAgentVersion = async (agentId: string, versionId: string) => {
+        if (isDemoMode) { addNotification('Versioning is disabled in demo mode.', 'warn'); return; }
         try {
             const agent = agents.find(a => a.id === agentId);
             const version = agent?.history.find(v => v.id === versionId);
             if (!agent || !version) throw new Error("Version not found");
-            
             const { id, versionNumber, createdAt, description, ...versionData } = version;
-            const updatedAgent: Agent = {
-                ...agent,
-                ...versionData,
-                updatedAt: 'Just now',
-            };
-
+            const updatedAgent: Agent = { ...agent, ...versionData, updatedAt: 'Just now' };
             const success = await updateAgent(updatedAgent);
             if (success) {
                 addNotification(`Restored version for "${agent.name}".`, 'success');
@@ -704,20 +721,17 @@ const App: React.FC = () => {
     };
 
     const addCallToHistory = async (call: CallRecord) => {
-        if (!supabase || !user) {
-            addNotification('Supabase not configured. Call record not saved.', 'warn');
+        if (isDemoMode) {
+            setCallHistory(prev => [call, ...prev]);
+            addNotification('Call record saved to temporary history.', 'info');
             return;
         }
+        if (!supabase || !user) { addNotification('Supabase not configured. Call record not saved.', 'warn'); return; }
         try {
              const callToDb = {
-                agent_id: call.agentId,
-                agent_name: call.agentName,
-                start_time: new Date(call.startTime).toISOString(),
-                end_time: new Date(call.endTime).toISOString(),
-                duration_ms: call.duration,
-                transcript: call.transcript,
-                recording_url: call.recordingUrl,
-                user_id: user.id,
+                agent_id: call.agentId, agent_name: call.agentName, start_time: new Date(call.startTime).toISOString(),
+                end_time: new Date(call.endTime).toISOString(), duration_ms: call.duration, transcript: call.transcript,
+                recording_url: call.recordingUrl, user_id: user.id,
             };
             const { error } = await supabase.from('call_history').insert(callToDb);
             if (error) throw error;
@@ -729,31 +743,30 @@ const App: React.FC = () => {
     };
 
     const createAgent = async (agentData: Omit<Agent, 'id' | 'history' | 'updatedAt' | 'status'>, fromTemplate = false) => {
-        if (!supabase || !user) {
-            addNotification('Supabase not configured or user not found.', 'error');
-            return;
-        }
+        const newAgentData = { ...agentData, status: 'Draft' as const, updatedAt: new Date().toLocaleString() };
         
-        try {
-            const newAgentData = {
-                ...agentData,
-                status: 'Draft' as const,
-                updatedAt: new Date().toLocaleString(),
-            };
-    
-            const { data, error } = await supabase.from('agents').insert({ ...agentToDb(newAgentData), user_id: user.id }).select();
-            if (error) throw error;
-
-            const newAgent: Agent = { ...dbToAgent(data[0]), history: [] };
-            
+        if (isDemoMode) {
+            const newAgent: Agent = { ...newAgentData, id: `demo-agent-${Date.now()}`, history: [] };
             setAgents(prev => [newAgent, ...prev]);
             setSelectedAgent(newAgent);
             setNewAgentName('');
             if (isQuickCreateOpen) setIsQuickCreateOpen(false);
             setView('AgentBuilder');
-            const message = fromTemplate 
-                ? `Agent "${newAgent.name}" created from template.`
-                : `Agent "${newAgent.name}" created successfully.`;
+            addNotification(`Agent "${newAgent.name}" created in demo mode.`, 'info');
+            return;
+        }
+
+        if (!supabase || !user) { addNotification('Supabase not configured or user not found.', 'error'); return; }
+        try {
+            const { data, error } = await supabase.from('agents').insert({ ...agentToDb(newAgentData), user_id: user.id }).select();
+            if (error) throw error;
+            const newAgent: Agent = { ...dbToAgent(data[0]), history: [] };
+            setAgents(prev => [newAgent, ...prev]);
+            setSelectedAgent(newAgent);
+            setNewAgentName('');
+            if (isQuickCreateOpen) setIsQuickCreateOpen(false);
+            setView('AgentBuilder');
+            const message = fromTemplate ? `Agent "${newAgent.name}" created from template.` : `Agent "${newAgent.name}" created successfully.`;
             addNotification(message, 'success');
         } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown error";
@@ -762,46 +775,25 @@ const App: React.FC = () => {
     };
 
     const uploadKnowledgeFile = async (file: File) => {
-        if (!supabase || !user) {
-            addNotification('Supabase not configured or user not found.', 'error');
-            return;
-        }
-
+        if (isDemoMode) { addNotification('File upload disabled in demo mode.', 'warn'); return; }
+        if (!supabase || !user) { addNotification('Supabase not configured or user not found.', 'error'); return; }
         const filePath = `knowledge_files/${user.id}/${Date.now()}_${file.name}`;
         addNotification(`Uploading "${file.name}"...`, 'info');
-
         try {
-            // 1. Upload file to storage
             const { error: uploadError } = await supabase.storage.from('studio').upload(filePath, file);
             if (uploadError) throw uploadError;
-
-            // 2. Add entry to knowledge_bases table
-            const newKbData = {
-                user_id: user.id,
-                source_name: file.name,
-                storage_path: filePath,
-                status: 'Indexing...' as const,
-                chunks: null,
-            };
+            const newKbData = { user_id: user.id, source_name: file.name, storage_path: filePath, status: 'Indexing...' as const, chunks: null };
             const { data, error: insertError } = await supabase.from('knowledge_bases').insert(newKbData).select();
             if (insertError) throw insertError;
-
             const newKb = dbToKb(data[0]);
             setKnowledgeBases(prev => [newKb, ...prev]);
-
-            // 3. Simulate indexing and update entry
             setTimeout(async () => {
-                const updatedKbData = {
-                    status: 'Indexed' as const,
-                    chunks: Math.floor(Math.random() * 200) + 50,
-                };
+                const updatedKbData = { status: 'Indexed' as const, chunks: Math.floor(Math.random() * 200) + 50 };
                 const { data: updatedData, error: updateError } = await supabase.from('knowledge_bases').update(updatedKbData).eq('id', newKb.id).select();
                 if (updateError) throw updateError;
-
                 setKnowledgeBases(prev => prev.map(kb => kb.id === newKb.id ? dbToKb(updatedData[0]) : kb));
                 addNotification(`"${newKb.sourceName}" has been successfully indexed.`, 'success');
             }, 3000);
-
         } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown error";
             addNotification(`Failed to upload file: ${message}`, 'error');
@@ -809,22 +801,13 @@ const App: React.FC = () => {
     };
 
     const deleteKnowledgeBase = async (kb: KnowledgeBase) => {
-        if (!supabase) {
-            addNotification('Supabase not configured.', 'error');
-            return;
-        }
-
+        if (isDemoMode) { addNotification('KB management disabled in demo mode.', 'warn'); return; }
+        if (!supabase) { addNotification('Supabase not configured.', 'error'); return; }
         try {
-            // 1. Delete from storage
             const { error: storageError } = await supabase.storage.from('studio').remove([kb.storagePath]);
-            if (storageError) {
-                console.warn('Storage deletion failed, but proceeding with DB deletion:', storageError.message);
-            }
-
-            // 2. Delete from DB
+            if (storageError) console.warn('Storage deletion failed, but proceeding with DB deletion:', storageError.message);
             const { error: dbError } = await supabase.from('knowledge_bases').delete().eq('id', kb.id);
             if (dbError) throw dbError;
-
             setKnowledgeBases(prev => prev.filter(k => k.id !== kb.id));
             addNotification(`Knowledge base "${kb.sourceName}" deleted.`, 'success');
         } catch (error) {
@@ -837,39 +820,23 @@ const App: React.FC = () => {
     const handleCreateAgentSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newAgentName.trim()) return;
-        
         const voiceDescription = "A standard, neutral voice.";
         const newAgentData = {
-            name: newAgentName,
-            language: 'Multilingual',
-            voice: 'Amber',
-            voiceDescription: voiceDescription,
+            name: newAgentName, language: 'Multilingual', voice: 'Amber', voiceDescription,
             personaShortText: `An AI assistant named ${newAgentName}.`,
             persona: getDepartmentalPrompt('General', newAgentName, "the company", voiceDescription),
-            tools: [],
-            introSpiel: { type: 'Concise' as const },
+            tools: [], introSpiel: { type: 'Concise' as const },
         };
         await createAgent(newAgentData);
     };
 
     const contextValue: AppContextType = useMemo(() => ({
-        view, setView,
-        selectedAgent, setSelectedAgent,
-        agents, setAgents,
-        isQuickCreateOpen, setIsQuickCreateOpen,
-        handleStartTest,
-        versioningAgent, setVersioningAgent,
-        saveAgentVersion, restoreAgentVersion,
-        callHistory, addCallToHistory,
-        notifications, addNotification, removeNotification,
-        updateAgent, deleteAgent, cloneAgent, createAgent,
-        isSupabaseConnected,
-        isLeftNavOpen, setIsLeftNavOpen,
-        isRightPanelOpen, setIsRightPanelOpen,
-        session, user, theme, setTheme,
-        knowledgeBases, uploadKnowledgeFile, deleteKnowledgeBase,
-        supabase
-    }), [view, selectedAgent, agents, isQuickCreateOpen, versioningAgent, callHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent, cloneAgent, createAgent, isSupabaseConnected, isLeftNavOpen, isRightPanelOpen, session, user, theme, knowledgeBases]);
+        view, setView, selectedAgent, setSelectedAgent, agents, setAgents, isQuickCreateOpen, setIsQuickCreateOpen,
+        handleStartTest, versioningAgent, setVersioningAgent, saveAgentVersion, restoreAgentVersion,
+        callHistory, addCallToHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent,
+        cloneAgent, createAgent, isSupabaseConnected, isLeftNavOpen, setIsLeftNavOpen, isRightPanelOpen, setIsRightPanelOpen,
+        session, user, theme, setTheme, knowledgeBases, uploadKnowledgeFile, deleteKnowledgeBase, supabase, isDemoMode
+    }), [view, selectedAgent, agents, isQuickCreateOpen, versioningAgent, callHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent, cloneAgent, createAgent, isSupabaseConnected, isLeftNavOpen, isRightPanelOpen, session, user, theme, knowledgeBases, isDemoMode]);
 
     const renderView = () => {
         switch (view) {
@@ -889,48 +856,43 @@ const App: React.FC = () => {
         }
     };
     
-    if (isLoading && !session) {
+    if (isLoading) {
         return (
             <div className="bg-background h-screen w-screen flex flex-col items-center justify-center text-subtle">
                 <Loader2 size={48} className="animate-spin text-primary" />
-                <p className="mt-4 text-lg">Loading Studio...</p>
+                <p className="mt-4 text-lg">Initializing Studio...</p>
             </div>
-        );
-    }
-
-    if (!session) {
-        return (
-            <Suspense fallback={
-                <div className="bg-background h-screen w-screen flex items-center justify-center">
-                    <Loader2 size={48} className="animate-spin text-primary" />
-                </div>
-            }>
-                <AuthPage addNotification={addNotification} supabaseClient={supabase} />
-            </Suspense>
         );
     }
 
     return (
         <AppContext.Provider value={contextValue}>
             <div className="bg-background text-text font-sans h-screen w-screen flex flex-col overflow-hidden">
-                <Header />
-                <div className="flex flex-1 min-h-0 relative">
-                    <LeftNav />
-                    <main className="flex-1 overflow-y-auto bg-background flex">
-                        <Suspense fallback={<PageLoader />}>
-                            {renderView()}
-                        </Suspense>
-                    </main>
-                    <RightPanel />
-                    {(isLeftNavOpen || isRightPanelOpen) && ! (window.innerWidth > 1024) && (
-                        <div 
-                            className="fixed inset-0 bg-black/50 z-30 lg:hidden" 
-                            onClick={() => {
-                                setIsLeftNavOpen(false);
-                                setIsRightPanelOpen(false);
-                            }}
-                        />
-                    )}
+                <div className="auth-waves fixed inset-0 z-0">
+                    <div className="wave wave1" />
+                    <div className="wave wave2" />
+                </div>
+                
+                <div className="relative z-10 flex flex-col h-full bg-transparent">
+                    <Header />
+                    <div className="flex flex-1 min-h-0 relative">
+                        <LeftNav />
+                        <main className="flex-1 overflow-y-auto bg-transparent flex">
+                            <Suspense fallback={<PageLoader />}>
+                                {renderView()}
+                            </Suspense>
+                        </main>
+                        <RightPanel />
+                        {(isLeftNavOpen || isRightPanelOpen) && ! (window.innerWidth > 1024) && (
+                            <div 
+                                className="fixed inset-0 bg-black/50 z-30 lg:hidden" 
+                                onClick={() => {
+                                    setIsLeftNavOpen(false);
+                                    setIsRightPanelOpen(false);
+                                }}
+                            />
+                        )}
+                    </div>
                 </div>
             </div>
             <Suspense>

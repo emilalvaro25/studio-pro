@@ -91,7 +91,7 @@ export const RightPanel: React.FC = () => {
   }
 
   return (
-    <aside className={`bg-surface border-l border-border flex-col z-40
+    <aside className={`bg-surface/80 backdrop-blur-sm border-l border-border/70 flex-col z-40
         fixed inset-y-0 right-0
         transform transition-transform lg:transition-all duration-300 ease-in-out
         ${isRightPanelOpen ? 'translate-x-0' : 'translate-x-full'}

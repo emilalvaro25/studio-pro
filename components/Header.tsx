@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Menu, PanelRight, User as UserIcon, LogOut, Sun, Moon } from 'lucide-react';
 import { useAppContext } from '../App';
 import Tooltip from './Tooltip';
@@ -21,16 +21,20 @@ const ThemeToggle: React.FC = () => {
 
 
 export const Header: React.FC = () => {
-    const { isSupabaseConnected, setIsLeftNavOpen, setIsRightPanelOpen, user, setView, supabase } = useAppContext();
+    const { isSupabaseConnected, setIsLeftNavOpen, setIsRightPanelOpen, user, setView, isDemoMode, session } = useAppContext();
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const profileRef = useRef<HTMLDivElement>(null);
-    const status = isSupabaseConnected ? 'Live' : 'Offline';
 
-    const handleSignOut = async () => {
-        if (supabase) {
-            await supabase.auth.signOut();
+    const { status, statusColor } = useMemo(() => {
+        if (isDemoMode) {
+            return { status: 'Demo Mode', statusColor: 'bg-warn' };
         }
-    };
+        if (session) {
+            return { status: 'Live', statusColor: 'bg-ok' };
+        }
+        return { status: 'Offline', statusColor: 'bg-danger' };
+    }, [isDemoMode, session]);
+
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -43,7 +47,7 @@ export const Header: React.FC = () => {
     }, []);
 
     return (
-        <header className="flex items-center justify-between h-16 px-4 bg-surface border-b border-border flex-shrink-0 z-50">
+        <header className="flex items-center justify-between h-16 px-4 bg-surface/80 backdrop-blur-sm border-b border-border/70 flex-shrink-0 z-50">
             <div className="flex items-center space-x-3">
                  <button onClick={() => setIsLeftNavOpen(prev => !prev)} className="p-2 rounded-md text-subtle hover:text-text lg:hidden" aria-label="Toggle navigation">
                     <Menu size={24} />
@@ -55,7 +59,7 @@ export const Header: React.FC = () => {
             
             <div className="flex items-center space-x-4">
                 <div className="hidden md:flex items-center space-x-2">
-                    <div className={`w-2.5 h-2.5 rounded-full ${status === 'Live' ? 'bg-ok' : 'bg-danger'} transition-colors`}></div>
+                    <div className={`w-2.5 h-2.5 rounded-full ${statusColor} transition-colors`}></div>
                     <span className="text-subtle text-xs font-medium">{status}</span>
                 </div>
                 <ThemeToggle />
@@ -68,7 +72,7 @@ export const Header: React.FC = () => {
                     {isProfileOpen && (
                         <div className="absolute right-0 mt-2 w-56 bg-surface border border-border rounded-lg shadow-lg py-1">
                             <div className="px-3 py-2 border-b border-border">
-                                <p className="text-sm font-medium text-text truncate">{user?.email}</p>
+                                <p className="text-sm font-medium text-text truncate">{user?.is_anonymous ? 'Guest User' : user?.email}</p>
                             </div>
                             <button
                                 onClick={() => { setView('Profile'); setIsProfileOpen(false); }}
@@ -76,13 +80,6 @@ export const Header: React.FC = () => {
                             >
                                 <UserIcon size={16} className="mr-2" />
                                 User Profile
-                            </button>
-                            <button
-                                onClick={handleSignOut}
-                                className="w-full text-left flex items-center px-3 py-2 text-sm text-danger hover:bg-danger/10"
-                            >
-                                <LogOut size={16} className="mr-2" />
-                                Sign Out
                             </button>
                         </div>
                     )}

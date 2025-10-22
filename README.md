@@ -9,6 +9,7 @@ Eburon CSR Studio is a web-based interface designed for the rapid development an
 ## ✨ Key Features
 
 *   **V-API Inspired Interface:** A clean, intuitive, and efficient UI designed to minimize clicks and streamline the agent creation process.
+*   **Offline Demo Mode:** The studio runs out-of-the-box without any setup. If backend keys are not provided, it seamlessly falls back to an offline mode where all features can be explored with temporary in-memory data.
 *   **Comprehensive Agent Builder:** A multi-tab interface to configure every aspect of your agent:
     *   **Identity:** Define the agent's name, persona, and introductory spiel.
     *   **Brain:** Equip agents with tools, set safety levels, and define core behaviors.
@@ -31,12 +32,12 @@ Eburon CSR Studio is a web-based interface designed for the rapid development an
 
 ## 🚀 Getting Started
 
-To run this project locally, you'll need a Supabase account and project.
+To connect the studio to a backend for data persistence, you'll need a Supabase account. If you just want to explore, you can run the project without any setup and it will start in **Offline Demo Mode**.
 
 ### Prerequisites
 
 1.  A Google account with the Gemini API enabled.
-2.  A [Supabase](https://supabase.com/) account and a new project created.
+2.  (Optional) A [Supabase](https://supabase.com/) account and a new project created.
 
 ### Setup Instructions
 
@@ -46,31 +47,30 @@ To run this project locally, you'll need a Supabase account and project.
     cd eburon-csr-studio
     ```
 
-2.  **Set up Supabase Database:**
+2.  **(Optional) Set up Supabase Database:**
     *   In your Supabase project dashboard, go to the **SQL Editor**.
     *   Click on **+ New query**.
     *   Navigate to the `pages/Database.tsx` file in this project. Copy the entire SQL content from the `schemaContent` constant.
     *   Paste the SQL into the Supabase SQL Editor and click **RUN**. This will create all the necessary tables, types, and security policies.
 
-3.  **Set up Supabase Storage:**
+3.  **(Optional) Set up Supabase Storage:**
     *   In your Supabase project dashboard, go to **Storage**.
     *   Click on **Create a new bucket**.
     *   Name the bucket `studio`.
     *   Make sure the bucket is **Public**. This is required for accessing call recordings and other assets via URL.
     *   Fine-tune the bucket's access policies as needed for your production environment. The application code handles creating the necessary sub-folders (`call_recordings`, `knowledge_files`).
 
-4.  **Configure Environment Variables:**
-    *   You will need two pieces of information from your Supabase project: the **Project URL** and the **`anon` public key**.
+4.  **(Optional) Configure Environment Variables:**
+    *   To connect to your Supabase project, you will need the **Project URL** and the **`anon` public key**.
     *   In your Supabase dashboard, go to **Project Settings** > **API**.
-    *   Find your Project URL and the `anon` public key.
-    *   You must set these as environment variables for the application to use:
-        *   `SUPABASE_URL`: Set this to your **Project URL**.
-        *   `SUPABASE_KEY`: Set this to your **`anon` public key**.
-    *   **Important**: The application code refers to the `anon` key as `SUPABASE_KEY`. Do not use your `service_role` key here, as this is a client-side application. The `anon` key is safe to expose in a browser.
+    *   Set the following environment variables:
+        *   `SUPABASE_URL`: Your **Project URL**.
+        *   `SUPABASE_KEY`: Your **`anon` public key**.
+    *   **Note**: If these variables are not provided, the application will automatically launch in a fully-featured offline demo mode. Your work will not be saved.
 
 5.  **Run the Application:**
-    *   Once the environment variables are set, you can run the application. Follow the instructions provided by your local development server.
-    *   The application should now be running and connected to your Supabase backend. You can sign up for a new account and start building agents.
+    *   Follow the instructions provided by your local development server to run the application.
+    *   The app will now be running. If you configured Supabase, it will connect to your backend. If not, it will start in Demo Mode.
 
 ## 📂 File Structure
 

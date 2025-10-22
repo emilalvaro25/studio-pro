@@ -44,7 +44,7 @@ const NavItem: React.FC<NavItemProps> = ({ icon, label, viewName, count, hasActi
 export const LeftNav: React.FC = () => {
     const { agents, callHistory, knowledgeBases, isLeftNavOpen, setIsLeftNavOpen } = useAppContext();
     return (
-        <nav className={`bg-surface border-r border-border flex flex-col z-40
+        <nav className={`bg-surface/80 backdrop-blur-sm border-r border-border/70 flex flex-col z-40
             fixed inset-y-0 left-0
             transform transition-transform lg:transition-all duration-300 ease-in-out
             ${isLeftNavOpen ? 'translate-x-0' : '-translate-x-full'}

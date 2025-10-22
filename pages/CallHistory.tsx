@@ -39,9 +39,9 @@ const DialerButton: React.FC<{ children: React.ReactNode; className?: string; on
 );
 
 const DialpadKey: React.FC<{ digit: string; subtext?: string; onClick: (digit: string) => void }> = ({ digit, subtext, onClick }) => (
-    <button onClick={() => onClick(digit)} className="rounded-full w-16 h-16 flex flex-col items-center justify-center bg-eburon-bg hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-teal">
+    <button onClick={() => onClick(digit)} className="rounded-full w-16 h-16 flex flex-col items-center justify-center bg-panel hover:bg-border transition-colors focus:outline-none focus:ring-2 focus:ring-primary">
         <span className="text-2xl font-light">{digit}</span>
-        {subtext && <span className="text-xs text-eburon-muted -mt-1">{subtext}</span>}
+        {subtext && <span className="text-xs text-muted -mt-1">{subtext}</span>}
     </button>
 );
 
@@ -118,7 +118,7 @@ const HistoryTranscriptView: React.FC<{
     startTime: number;
     playbackTime: number; // in ms
 }> = ({ transcript, startTime, playbackTime }) => (
-    <div aria-live="polite" className="flex-1 space-y-4 overflow-y-auto pr-2 bg-eburon-bg p-4 rounded-lg">
+    <div aria-live="polite" className="flex-1 space-y-4 overflow-y-auto pr-2 bg-background p-4 rounded-lg">
         {transcript.map((line, i) => {
             const relativeTime = line.timestamp - startTime;
             const displayTime = Math.max(0, relativeTime);
@@ -139,20 +139,20 @@ const HistoryTranscriptView: React.FC<{
                     
                     <div className="flex flex-col">
                         <div className={`p-3 rounded-lg max-w-lg transition-colors duration-200 ${
-                            line.speaker === 'System' ? 'text-center w-full bg-transparent text-eburon-muted text-xs' :
-                            line.speaker === 'You' ? (isActive ? 'bg-primary/20' : 'bg-eburon-border') :
-                            (isActive ? 'bg-brand-teal/20' : 'bg-eburon-bg border border-eburon-border')
+                            line.speaker === 'System' ? 'text-center w-full bg-transparent text-subtle text-xs' :
+                            line.speaker === 'You' ? (isActive ? 'bg-primary/20' : 'bg-panel') :
+                            (isActive ? 'bg-brand-teal/20' : 'bg-surface border border-border')
                         }`}>
                             <p>{line.text}</p>
                         </div>
                         {line.speaker !== 'System' && (
-                            <span className={`text-xs text-eburon-muted mt-1 ${line.speaker === 'You' ? 'text-right' : 'text-left'}`}>
+                            <span className={`text-xs text-muted mt-1 ${line.speaker === 'You' ? 'text-right' : 'text-left'}`}>
                                 {timestampStr}
                             </span>
                         )}
                     </div>
                     
-                    {line.speaker === 'You' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-eburon-border flex items-center justify-center"><User size={18} /></div>}
+                    {line.speaker === 'You' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-panel flex items-center justify-center"><User size={18} /></div>}
                 </div>
             );
         })}
@@ -164,7 +164,7 @@ const CallHistoryPage: React.FC = () => {
     const [isSimulating, setIsSimulating] = useState(false);
     
     // --- History View State ---
-    const { callHistory, selectedAgent, addCallToHistory, addNotification, supabase } = useAppContext();
+    const { callHistory, selectedAgent, addCallToHistory, addNotification, supabase, isDemoMode } = useAppContext();
     const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [playbackTime, setPlaybackTime] = useState(0); // in ms
@@ -239,7 +239,7 @@ const CallHistoryPage: React.FC = () => {
         setLiveTranscript(prev => [...prev, { ...line, timestamp: Date.now() }]);
     }, []);
 
-    const endCall = useCallback(() => {
+    const endCall = useCallback(async () => {
         if (callStatusRef.current === 'idle' || callStatusRef.current === 'ended') return;
         setCallStatus('ended');
         setIvrState('ended');
@@ -255,65 +255,36 @@ const CallHistoryPage: React.FC = () => {
         if(outputAudioContextRef.current?.state !== 'closed') outputAudioContextRef.current?.close();
         mediaStreamRef.current?.getTracks().forEach(track => track.stop());
         mediaStreamRef.current = null;
+        
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
             mediaRecorderRef.current.onstop = async () => {
                 const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
                 let finalRecordingUrl = URL.createObjectURL(blob);
     
-                if (supabase && selectedAgent && callStartTime) {
+                if (!isDemoMode && supabase && selectedAgent && callStartTime) {
                     const callId = `call_${Date.now()}`;
                     const filePath = `call_recordings/${callId}.webm`;
-    
                     try {
-                        const { error: uploadError } = await supabase.storage
-                            .from('studio') // Use the 'studio' bucket
-                            .upload(filePath, blob, {
-                                contentType: 'audio/webm',
-                                upsert: false,
-                            });
-    
+                        const { error: uploadError } = await supabase.storage.from('studio').upload(filePath, blob);
                         if (uploadError) throw uploadError;
-    
-                        const { data: urlData } = supabase.storage
-                            .from('studio') // Use the 'studio' bucket
-                            .getPublicUrl(filePath);
-    
+                        const { data: urlData } = supabase.storage.from('studio').getPublicUrl(filePath);
                         if (urlData.publicUrl) {
                             finalRecordingUrl = urlData.publicUrl;
                             addNotification('Call recording saved to cloud storage.', 'success');
-                        } else {
-                            addNotification('Recording uploaded, but failed to get public URL.', 'warn');
                         }
                     } catch (error) {
                         const message = error instanceof Error ? error.message : "Unknown storage error";
                         addNotification(`Failed to upload recording: ${message}`, 'error');
-                        console.error('Supabase upload error:', error);
                     }
+                }
     
-                    const endTime = Date.now();
-                    const call: CallRecord = {
-                        id: callId,
-                        agentId: selectedAgent.id,
-                        agentName: selectedAgent.name,
-                        startTime: callStartTime,
-                        endTime: endTime,
-                        duration: endTime - callStartTime,
-                        transcript: liveTranscriptRef.current,
-                        recordingUrl: finalRecordingUrl,
-                    };
-                    await addCallToHistory(call);
-                    setRecordedAudioUrl(finalRecordingUrl);
-                } else if (selectedAgent && callStartTime) {
+                if (selectedAgent && callStartTime) {
                     const endTime = Date.now();
                     const call: CallRecord = {
                         id: `call_${Date.now()}`,
-                        agentId: selectedAgent.id,
-                        agentName: selectedAgent.name,
-                        startTime: callStartTime,
-                        endTime,
-                        duration: endTime - callStartTime,
-                        transcript: liveTranscriptRef.current,
-                        recordingUrl: finalRecordingUrl,
+                        agentId: selectedAgent.id, agentName: selectedAgent.name,
+                        startTime: callStartTime, endTime: endTime, duration: endTime - callStartTime,
+                        transcript: liveTranscriptRef.current, recordingUrl: finalRecordingUrl,
                     };
                     await addCallToHistory(call);
                     setRecordedAudioUrl(finalRecordingUrl);
@@ -323,7 +294,7 @@ const CallHistoryPage: React.FC = () => {
             };
             mediaRecorderRef.current.stop();
         }
-    }, [addCallToHistory, callStartTime, selectedAgent, supabase, addNotification]);
+    }, [addCallToHistory, callStartTime, selectedAgent, supabase, addNotification, isDemoMode]);
     
     // ... all other simulation functions from Calls.tsx (playTones, connectToAgent, etc.) are pasted here ...
     // Note: for brevity, only showing the newly added control flow functions. The rest of the simulation logic is identical to the former pages/Calls.tsx.
@@ -361,23 +332,23 @@ const CallHistoryPage: React.FC = () => {
         return (
             <div className="p-6 h-full flex flex-col">
                 <div className="flex justify-between items-center mb-6 flex-shrink-0">
-                    <h1 className="text-xl font-semibold text-eburon-text">Call History</h1>
-                    <button onClick={handleStartSimulation} className="flex items-center space-x-2 bg-brand-teal text-eburon-bg font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
+                    <h1 className="text-xl font-semibold text-text">Call History</h1>
+                    <button onClick={handleStartSimulation} className="flex items-center space-x-2 bg-primary text-white font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
                         <Phone size={18} />
                         <span>Start Simulation</span>
                     </button>
                 </div>
-                <div className="flex-1 bg-eburon-card border border-eburon-border rounded-xl flex overflow-hidden">
-                    <aside className="w-full md:w-1/3 border-r border-eburon-border flex-col md:flex hidden">
-                        <div className="p-4 border-b border-eburon-border">
+                <div className="flex-1 bg-surface border border-border rounded-xl flex overflow-hidden">
+                    <aside className="w-full md:w-1/3 border-r border-border flex-col md:flex hidden">
+                        <div className="p-4 border-b border-border">
                             <div className="relative">
-                                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-eburon-muted" />
+                                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
                                 <input
                                     type="text"
                                     placeholder="Search by agent name..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full bg-eburon-bg border border-eburon-border rounded-lg pl-10 pr-3 py-1.5 focus:ring-2 focus:ring-brand-teal focus:outline-none"
+                                    className="w-full bg-background border border-border rounded-lg pl-10 pr-3 py-1.5 focus:ring-2 focus:ring-primary focus:outline-none"
                                 />
                             </div>
                         </div>
@@ -387,15 +358,15 @@ const CallHistoryPage: React.FC = () => {
                                     <button
                                         key={call.id}
                                         onClick={() => setSelectedCall(call)}
-                                        className={`w-full text-left p-4 border-b border-eburon-border transition-colors ${selectedCall?.id === call.id ? 'bg-brand-teal/10' : 'hover:bg-white/5'}`}
+                                        className={`w-full text-left p-4 border-b border-border transition-colors ${selectedCall?.id === call.id ? 'bg-primary/10' : 'hover:bg-panel'}`}
                                     >
-                                        <p className={`font-semibold ${selectedCall?.id === call.id ? 'text-brand-teal' : 'text-eburon-text'}`}>{call.agentName}</p>
-                                        <p className="text-xs text-eburon-muted">{new Date(call.startTime).toLocaleString()}</p>
-                                        <p className="text-xs text-eburon-muted">Duration: {formatDuration(call.duration)}</p>
+                                        <p className={`font-semibold ${selectedCall?.id === call.id ? 'text-primary' : 'text-text'}`}>{call.agentName}</p>
+                                        <p className="text-xs text-subtle">{new Date(call.startTime).toLocaleString()}</p>
+                                        <p className="text-xs text-subtle">Duration: {formatDuration(call.duration)}</p>
                                     </button>
                                 ))
                             ) : (
-                                <div className="p-4 text-center text-eburon-muted">No call records found.</div>
+                                <div className="p-4 text-center text-subtle">No call records found.</div>
                             )}
                         </div>
                     </aside>
@@ -403,14 +374,14 @@ const CallHistoryPage: React.FC = () => {
                         {selectedCall ? (
                             <>
                                 <div className="flex-shrink-0 mb-4">
-                                    <h2 className="text-lg font-bold text-eburon-text">{selectedCall.agentName}</h2>
-                                    <div className="flex items-center space-x-4 text-sm text-eburon-muted mt-1">
+                                    <h2 className="text-lg font-bold text-text">{selectedCall.agentName}</h2>
+                                    <div className="flex items-center space-x-4 text-sm text-subtle mt-1">
                                         <div className="flex items-center space-x-1.5"><PhoneIncoming size={14} /><span>{new Date(selectedCall.startTime).toLocaleString()}</span></div>
                                         <div className="flex items-center space-x-1.5"><Clock size={14} /><span>{formatDuration(selectedCall.duration)}</span></div>
                                     </div>
                                 </div>
                                 <div className="flex-shrink-0 mb-4">
-                                    <h3 className="text-sm font-semibold text-eburon-muted mb-2">Call Recording</h3>
+                                    <h3 className="text-sm font-semibold text-subtle mb-2">Call Recording</h3>
                                     <audio
                                         ref={audioRef}
                                         controls
@@ -433,7 +404,7 @@ const CallHistoryPage: React.FC = () => {
                                     </audio>
                                 </div>
                                 <div className="flex-1 flex flex-col overflow-hidden">
-                                    <h3 className="text-sm font-semibold text-eburon-muted mb-2">Transcript</h3>
+                                    <h3 className="text-sm font-semibold text-subtle mb-2">Transcript</h3>
                                     <HistoryTranscriptView
                                         transcript={selectedCall.transcript}
                                         startTime={selectedCall.startTime}
@@ -442,7 +413,7 @@ const CallHistoryPage: React.FC = () => {
                                 </div>
                             </>
                         ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-center text-eburon-muted">
+                            <div className="flex flex-col items-center justify-center h-full text-center text-subtle">
                                 <FileText size={48} className="mb-4" />
                                 <h2 className="text-lg font-semibold">No Call Selected</h2>
                                 <p>Select a call from the list to view its details.</p>
@@ -463,10 +434,10 @@ const CallHistoryPage: React.FC = () => {
                 {transcript.map((line, i) => (
                     <div key={i} className={`flex items-start gap-3 ${line.speaker === 'You' ? 'justify-end' : ''}`}>
                         {line.speaker === 'Agent' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-teal/20 text-brand-teal flex items-center justify-center"><Bot size={18}/></div>}
-                        <div className={`p-3 rounded-lg max-w-lg ${line.speaker === 'You' ? 'bg-eburon-border' : 'bg-eburon-bg'} ${line.speaker === 'System' ? 'text-center w-full bg-transparent text-eburon-muted text-xs' : ''}`}>
+                        <div className={`p-3 rounded-lg max-w-lg ${line.speaker === 'You' ? 'bg-panel' : 'bg-surface'} ${line.speaker === 'System' ? 'text-center w-full bg-transparent text-subtle text-xs' : ''}`}>
                             <p>{line.text}</p>
                         </div>
-                        {line.speaker === 'You' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-eburon-border flex items-center justify-center"><User size={18}/></div>}
+                        {line.speaker === 'You' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-panel flex items-center justify-center"><User size={18}/></div>}
                     </div>
                 ))}
             </div>
@@ -485,7 +456,7 @@ const CallHistoryPage: React.FC = () => {
                  {(callStatus === 'idle' || callStatus === 'ended') && (
                     <button 
                         onClick={handleBackToHistory}
-                        className="absolute top-8 left-8 flex items-center space-x-2 text-eburon-muted hover:text-eburon-text z-20"
+                        className="absolute top-8 left-8 flex items-center space-x-2 text-subtle hover:text-text z-20"
                     >
                         <ArrowLeft size={20} />
                         <span>Back to Call History</span>
@@ -503,12 +474,12 @@ const CallHistoryPage: React.FC = () => {
                             {/* iPhone Mockup */}
                              <div className="relative h-[700px] w-[340px] bg-black rounded-[2.5rem] border-[10px] border-black overflow-hidden shadow-2xl">
                                 <div className="absolute top-0 left-1/2 -translate-x-1/2 h-7 w-36 bg-black rounded-b-xl z-10"></div>
-                                <div className="h-full w-full bg-eburon-card rounded-[2rem] flex flex-col p-4">
+                                <div className="h-full w-full bg-surface rounded-[2rem] flex flex-col p-4">
                                     <div className="flex-1 flex flex-col justify-between">
                                         <div className="text-center pt-4">
-                                            <h2 className="text-lg font-semibold text-eburon-text">{selectedAgent?.name || 'Call Simulation'}</h2>
+                                            <h2 className="text-lg font-semibold text-text">{selectedAgent?.name || 'Call Simulation'}</h2>
                                             <div className="text-xs h-4 mt-1">
-                                                {callStatus === 'idle' && <p className="text-eburon-muted">Ready to call</p>}
+                                                {callStatus === 'idle' && <p className="text-subtle">Ready to call</p>}
                                                 {callStatus === 'connecting' && <p className="text-warn animate-pulse">{ivrState}...</p>}
                                                 {callStatus === 'connected' && <p className="text-ok">Connected</p>}
                                                 {callStatus === 'ended' && <p className="text-danger">Call Ended</p>}
@@ -522,9 +493,9 @@ const CallHistoryPage: React.FC = () => {
                                             <div className="flex items-center space-x-3 pt-2">
                                                  {callStatus === 'connected' ? (
                                                     <>
-                                                        <DialerButton className={isMuted ? "bg-white/10" : "bg-eburon-bg"} onClick={() => setIsMuted(!isMuted)}>{isMuted ? <MicOff size={24}/> : <Mic size={24}/>}</DialerButton>
+                                                        <DialerButton className={isMuted ? "bg-white/10" : "bg-panel"} onClick={() => setIsMuted(!isMuted)}>{isMuted ? <MicOff size={24}/> : <Mic size={24}/>}</DialerButton>
                                                         <DialerButton className="bg-danger/80 hover:bg-danger text-white" onClick={endCall} data-id="btn-end-call"><PhoneOff size={24} /></DialerButton>
-                                                        <DialerButton className={isHolding ? "bg-brand-gold text-eburon-bg" : "bg-eburon-bg"} onClick={() => {}}>{isHolding ? <PlayIcon size={24}/> : <Pause size={24}/>}</DialerButton>
+                                                        <DialerButton className={isHolding ? "bg-brand-gold text-surface" : "bg-panel"} onClick={() => {}}>{isHolding ? <PlayIcon size={24}/> : <Pause size={24}/>}</DialerButton>
                                                     </>
                                                  ) : (
                                                     <>
@@ -536,19 +507,19 @@ const CallHistoryPage: React.FC = () => {
                                             </div>
                                         </div>
                                         <div className="flex items-center justify-between">
-                                            <div className="flex items-center space-x-1 text-eburon-muted text-xs">
+                                            <div className="flex items-center space-x-1 text-subtle text-xs">
                                                 <Circle size={10} className="text-danger fill-current animate-pulse"/><span>REC</span>
                                             </div>
                                             <div className="flex items-center space-x-1 cursor-pointer" onClick={() => setIsBgSoundActive(!isBgSoundActive)}>
-                                                <Volume2 size={14} className={isBgSoundActive ? 'text-brand-teal' : 'text-eburon-muted'}/>
-                                                <div className="w-8 h-4 bg-eburon-bg rounded-full p-0.5 flex items-center"><div className={`w-3 h-3 rounded-full bg-eburon-muted transition-transform ${isBgSoundActive ? 'translate-x-4 bg-brand-teal' : ''}`}/></div>
+                                                <Volume2 size={14} className={isBgSoundActive ? 'text-brand-teal' : 'text-subtle'}/>
+                                                <div className="w-8 h-4 bg-background rounded-full p-0.5 flex items-center"><div className={`w-3 h-3 rounded-full bg-subtle transition-transform ${isBgSoundActive ? 'translate-x-4 bg-brand-teal' : ''}`}/></div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        <div className="bg-eburon-card border border-eburon-border rounded-xl flex flex-col p-6">
+                        <div className="bg-surface border border-border rounded-xl flex flex-col p-6">
                             <div className="flex-1 min-h-0 flex flex-col space-y-4">
                                 <div className="grid grid-cols-2 gap-4 h-16">
                                     <div className="flex flex-col items-center"><canvas ref={inputVisualizerRef} className="w-full h-full" /><label className="text-xs text-brand-gold">Your Voice</label></div>
@@ -556,15 +527,15 @@ const CallHistoryPage: React.FC = () => {
                                 </div>
                                 <SimulationTranscriptView transcript={liveTranscript} />
                             </div>
-                            <div className="pt-4 border-t border-eburon-border flex-shrink-0">
+                            <div className="pt-4 border-t border-border flex-shrink-0">
                                 {recordedAudioUrl ? (
                                     <div className="flex items-center space-x-3">
-                                        <p className="text-sm text-eburon-muted">User audio recording:</p>
+                                        <p className="text-sm text-subtle">User audio recording:</p>
                                         <audio controls src={recordedAudioUrl} className="w-full h-10"></audio>
-                                        <button onClick={() => setRecordedAudioUrl(null)} className="text-eburon-muted hover:text-danger"><Delete size={18}/></button>
+                                        <button onClick={() => setRecordedAudioUrl(null)} className="text-subtle hover:text-danger"><Delete size={18}/></button>
                                     </div>
                                 ) : (
-                                    <p className="text-sm text-center text-eburon-muted">Call recording will appear here after the call ends.</p>
+                                    <p className="text-sm text-center text-subtle">Call recording will appear here after the call ends.</p>
                                 )}
                             </div>
                         </div>
