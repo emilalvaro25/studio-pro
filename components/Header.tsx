@@ -6,7 +6,7 @@ import Tooltip from './Tooltip';
 
 const getSupabaseClient = () => {
     const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_ANON_KEY;
+    const key = process.env.SUPABASE_KEY; // Use the correct environment variable
     if (url && key) {
         return createClient(url, key);
     }
