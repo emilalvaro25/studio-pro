@@ -3,16 +3,33 @@ export type View = 'Home' | 'Agents' | 'Calls' | 'Knowledge' | 'Voices' | 'Deplo
 export type AgentStatus = 'Draft' | 'Ready' | 'Live';
 export type AgentTool = 'Knowledge' | 'Webhook' | 'Calendar' | 'Payments';
 
+export interface AgentVersion {
+  id: string; // Unique ID for the version, e.g., a timestamp
+  versionNumber: number;
+  createdAt: string;
+  description: string;
+  // Snapshot of agent properties
+  name: string;
+  status: AgentStatus;
+  language: string;
+  voice: string;
+  personaShortText: string;
+  persona: string;
+  tools: AgentTool[];
+}
+
+
 export interface Agent {
   id: string;
   name: string;
   status: AgentStatus;
   language: string;
   voice: string;
-  updatedAt: string;
+  updatedAt: string; // This will now reflect the last save/restore time
   personaShortText: string;
   persona: string;
   tools: AgentTool[];
+  history: AgentVersion[];
 }
 
 export interface TranscriptLine {

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import { decode, decodeAudioData } from '../services/audioUtils';
 import { useAppContext } from '../App';
-import { Play, Loader2, Save, User, Brain, Voicemail, Library, TestTube, Phone, CheckSquare, Square, Volume2, X } from 'lucide-react';
+import { Play, Loader2, Save, User, Brain, Voicemail, Library, TestTube, Phone, CheckSquare, Square, Volume2, X, History } from 'lucide-react';
 import { Agent, AgentTool } from '../types';
 
 const voices = [
@@ -13,6 +13,7 @@ const voices = [
     { name: 'Upbeat Female', prebuilt: 'Zephyr', description: 'Energetic and positive.' },
     { name: 'Calm Narrator', prebuilt: 'Charon', description: 'Soothing and narrative.' },
     { name: 'Friendly', prebuilt: 'Fenrir', description: 'A pleasant and approachable tone.' },
+    { name: 'Elegant Female', prebuilt: 'Aoede', description: 'A clear and sophisticated voice.' },
 ];
 
 const ALL_TOOLS: AgentTool[] = ['Knowledge', 'Webhook', 'Calendar', 'Payments'];
@@ -64,7 +65,7 @@ const SystemPromptModal: React.FC<{ prompt: string; onSave: (newPrompt: string) 
 
 
 const AgentBuilderPage: React.FC = () => {
-    const { selectedAgent, setView, agents, setAgents, handleStartTest } = useAppContext();
+    const { selectedAgent, setView, agents, setAgents, handleStartTest, setVersioningAgent } = useAppContext();
     const [activeTab, setActiveTab] = useState<BuilderTab>('Identity');
     
     const [formData, setFormData] = useState<Agent | null>(selectedAgent);
@@ -344,10 +345,16 @@ const AgentBuilderPage: React.FC = () => {
                         <span className="text-eburon-muted font-normal">Editing:</span> {formData.name}
                     </h1>
                 </div>
-                <button onClick={handleSave} className="flex items-center space-x-2 bg-brand-teal text-eburon-bg font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
-                    <Save size={18} />
-                    <span>Save</span>
-                </button>
+                <div className="flex items-center space-x-3">
+                    <button onClick={() => setVersioningAgent({ agent: selectedAgent, builderState: formData })} className="flex items-center space-x-2 bg-eburon-border text-eburon-text font-semibold px-4 py-1.5 rounded-lg hover:bg-white/10 transition-colors">
+                        <History size={18} />
+                        <span>Version History</span>
+                    </button>
+                    <button onClick={handleSave} className="flex items-center space-x-2 bg-brand-teal text-eburon-bg font-semibold px-4 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
+                        <Save size={18} />
+                        <span>Save</span>
+                    </button>
+                </div>
             </div>
             <div className="bg-eburon-card border border-eburon-border rounded-xl flex-1 flex flex-col">
                 <div className="p-4 border-b border-eburon-border flex items-center space-x-2 overflow-x-auto">

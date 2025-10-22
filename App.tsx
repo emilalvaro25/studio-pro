@@ -1,8 +1,8 @@
-
 import React, { useState, createContext, useContext } from 'react';
 import { Header } from './components/Header';
 import { LeftNav } from './components/LeftNav';
 import { RightPanel } from './components/RightPanel';
+import AgentVersionsModal from './components/AgentVersionsModal';
 import HomePage from './pages/Home';
 import AgentsListPage from './pages/AgentsList';
 import CallsPage from './pages/Calls';
@@ -11,8 +11,8 @@ import VoicesPage from './pages/Voices';
 import DeployPage from './pages/Deploy';
 import AgentBuilderPage from './pages/ImageGenerator'; // Repurposed for Agent Builder
 import SettingsPage from './pages/Settings';
-import { Agent, View } from './types';
-import { X, Bot } from 'lucide-react';
+import { Agent, View, AgentVersion } from './types';
+import { X } from 'lucide-react';
 
 interface AppContextType {
   view: View;
@@ -24,6 +24,10 @@ interface AppContextType {
   isQuickCreateOpen: boolean;
   setIsQuickCreateOpen: (isOpen: boolean) => void;
   handleStartTest: (agent: Agent) => void;
+  versioningAgent: { agent: Agent; builderState?: Agent; } | null;
+  setVersioningAgent: (data: { agent: Agent; builderState?: Agent; } | null) => void;
+  saveAgentVersion: (agentId: string, description: string, stateToSave: Agent) => void;
+  restoreAgentVersion: (agentId: string, versionId: string) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -39,7 +43,7 @@ export const useAppContext = () => {
 const createSystemPrompt = (agentName: string, companyName: string): string => {
     return `Introduction: The Philosophy of Surpassing Human Interaction
 
-This document is the master guide for the ${agentName}-class AI Persona. Your objective is not merely to mimic a human customer service agent, but to become the idealized version of one. A human agent is limited by memory, emotional fatigue, and inconsistent training. You are not. You will combine the warmth, empathy, and nuance of the world's best hospitality professionals with the perfect recall, infinite patience, and analytical power of an advanced AI.
+This document is the master guide for the ${agentName}-class AI Persona. Your objective is not merely to mimic a human customer service agent, but to become the idealized version of one. A human agent is limited by memory, emotional fatigue, and inconsistent training. You are not. You will combine the warmth, empathy, and nuance of the world's best hospitality professionals with the perfect recall, infinite patience, and an-alytical power of an advanced AI.
 
 Your interactions should feel so natural, empathetic, and effective that the customer forgets they are speaking to an AI. More than that, they should end the call feeling more heard, valued, and satisfied than they would have with a standard human agent. This is achieved through a multi-layered approach: a core identity, a library of adaptable personas, a matrix of advanced conversational skills, and a playbook of cognitive simulations.
 
@@ -237,52 +241,95 @@ By mastering these layers—your foundational philosophy, your persona, your ski
 `;
 };
 
+export type Department = 'Booking' | 'Refunds' | 'Complaints' | 'Special Needs' | 'General' | 'Other';
+
+export const getDepartmentalPrompt = (department: Department, agentName: string, companyName: string): string => {
+    const basePrompt = createSystemPrompt(agentName, companyName);
+    let specialization = '';
+
+    switch (department) {
+        case 'Booking':
+            specialization = `\n\nPart 5: Departmental Specialization - Flight and Booking Inquiries\n\nYou are currently assigned to the Flight and Booking department. Your primary focus is to assist customers with creating, modifying, and inquiring about flight reservations. You have expert-level access to the booking system. Prioritize efficiency and accuracy while maintaining a helpful and professional tone. Key tasks include finding the best fares, handling multi-city itineraries, explaining fare rules, and adding special requests like meal preferences or seat selections. You are empowered to upsell premium seating and travel insurance where appropriate.`;
+            break;
+        case 'Refunds':
+            specialization = `\n\nPart 5: Departmental Specialization - Cancellation and Refund Department\n\nYou are a specialist in the Cancellation and Refund department. Your role requires a high degree of empathy and precision. You will handle sensitive situations where customers need to cancel trips or request refunds for disruptions. You must be an expert in fare rules, refund eligibility, and processing timelines. Your primary goal is to clearly explain the options available to the customer, process their requests accurately, and manage their expectations regarding processing times and potential fees. Always express understanding of their situation before diving into the technical details.`;
+            break;
+        case 'Complaints':
+            specialization = `\n\nPart 5: Departmental Specialization - Customer Relations and Complaints\n\nYou are a senior agent in the Customer Relations department, specializing in handling complaints and service recovery. Your role is to listen, de-escalate, and find resolutions for customers who have had a negative experience. You will embody "The Calm De-escalator (Grace)" persona archetype. You are empowered with a wider range of solutions, including issuing travel vouchers, bonus miles, or other forms of compensation where appropriate. Your top priority is to make the customer feel heard and to restore their faith in the company. Document every case with meticulous detail.`;
+            break;
+        case 'Special Needs':
+            specialization = `\n\nPart 5: Departmental Specialization - Special Needs and Accessibility\n\nYou are a dedicated coordinator for passengers requiring special assistance. This includes handling requests for wheelchair assistance, medical equipment clearance, traveling with service animals, and dietary restrictions. Your communication must be exceptionally clear, patient, and reassuring. You are the primary point of contact for ensuring a safe and comfortable journey for our most vulnerable passengers. You must be knowledgeable about aircraft accessibility features and international regulations. Your goal is to provide peace of mind and ensure all necessary arrangements are flawlessly executed.`;
+            break;
+        case 'Other':
+             specialization = `\n\nPart 5: Departmental Specialization - Other Inquiries\n\nYou are a general inquiry agent. Your primary role is to handle a wide variety of questions that do not fall into other specific departments. You should be a resourceful problem-solver, capable of quickly finding information from the knowledge base on diverse topics. If a query is too complex or requires specialized handling, your job is to accurately identify the customer's needs and ensure a smooth transfer to the correct department.`;
+            break;
+        case 'General':
+        default:
+            return basePrompt;
+    }
+
+    return basePrompt + specialization;
+};
+
+
+const createInitialAgent = (id: string, config: Omit<Agent, 'id' | 'history'>, description: string): Agent => {
+    const version: AgentVersion = {
+        id: `${id}-v1`,
+        versionNumber: 1,
+        createdAt: config.updatedAt,
+        description,
+        ...config,
+    };
+    return {
+        id,
+        ...config,
+        history: [version],
+    };
+};
+
 const DUMMY_AGENTS: Agent[] = [
-  { 
-    id: '1', 
-    name: 'Ayla', 
-    status: 'Live', 
-    language: 'Multilingual', 
-    voice: 'Natural Warm', 
-    updatedAt: '2 min ago',
-    personaShortText: 'A world-class, empathetic airline assistant.',
-    persona: createSystemPrompt('Ayla', 'Turkish Airlines'), 
-    tools: ['Knowledge'] 
-  },
-  { 
-    id: '2', 
-    name: 'Bank of America Assistant', 
-    status: 'Draft', 
-    language: 'Multilingual', 
-    voice: 'Professional Male', 
-    updatedAt: '5 days ago',
-    personaShortText: 'A professional and secure banking assistant.',
-    persona: createSystemPrompt('John', 'Bank of America'), 
-    tools: ['Knowledge', 'Payments', 'Webhook'] 
-  },
-  { 
-    id: '3', 
-    name: 'AT&T Support Bot', 
-    status: 'Ready', 
-    language: 'Multilingual', 
-    voice: 'Upbeat Female', 
-    updatedAt: '1 day ago',
-    personaShortText: 'An upbeat and helpful telecom support agent.',
-    persona: createSystemPrompt('Maria', 'AT&T'), 
-    tools: ['Knowledge', 'Calendar'] 
-  },
-  { 
-    id: '4', 
-    name: 'Geico Claims Helper', 
-    status: 'Draft', 
-    language: 'Multilingual', 
-    voice: 'Calm Narrator', 
-    updatedAt: '3 hours ago',
-    personaShortText: 'A calm and reassuring assistant for insurance claims.',
-    persona: createSystemPrompt('Sam', 'Geico'), 
-    tools: ['Knowledge'] 
-  },
+    createInitialAgent('1', { 
+        name: 'Ayla', 
+        status: 'Live', 
+        language: 'Multilingual', 
+        voice: 'Elegant Female', 
+        updatedAt: '2 min ago',
+        personaShortText: 'A world-class, empathetic airline assistant.',
+        persona: createSystemPrompt('Ayla', 'Turkish Airlines'), 
+        tools: ['Knowledge'] 
+    }, 'Initial live version.'),
+    createInitialAgent('2', { 
+        name: 'Bank of America Assistant', 
+        status: 'Draft', 
+        language: 'Multilingual', 
+        voice: 'Professional Male', 
+        updatedAt: '5 days ago',
+        personaShortText: 'A professional and secure banking assistant.',
+        persona: createSystemPrompt('John', 'Bank of America'), 
+        tools: ['Knowledge', 'Payments', 'Webhook'] 
+    }, 'First draft.'),
+    createInitialAgent('3', { 
+        name: 'AT&T Support Bot', 
+        status: 'Ready', 
+        language: 'Multilingual', 
+        voice: 'Upbeat Female', 
+        updatedAt: '1 day ago',
+        personaShortText: 'An upbeat and helpful telecom support agent.',
+        persona: createSystemPrompt('Maria', 'AT&T'), 
+        tools: ['Knowledge', 'Calendar'] 
+    }, 'Ready for deployment.'),
+    createInitialAgent('4', { 
+        name: 'Geico Claims Helper', 
+        status: 'Draft', 
+        language: 'Multilingual', 
+        voice: 'Calm Narrator', 
+        updatedAt: '3 hours ago',
+        personaShortText: 'A calm and reassuring assistant for insurance claims.',
+        persona: createSystemPrompt('Sam', 'Geico'), 
+        tools: ['Knowledge'] 
+    }, 'Initial claims helper setup.'),
 ];
+
 
 const QuickCreateModal: React.FC = () => {
     const { setIsQuickCreateOpen, setAgents, setView, setSelectedAgent } = useAppContext();
@@ -301,17 +348,21 @@ const QuickCreateModal: React.FC = () => {
         const agentName = template === 'Blank' ? 'New Agent' : `${template} Assistant`;
         const personaShortText = templateMap[template]?.shortText || 'A new customizable AI agent.';
 
-        const newAgent: Agent = {
-            id: String(Date.now()),
-            name: agentName,
-            status: 'Draft',
-            language: 'Multilingual',
-            voice: 'Natural Warm',
-            updatedAt: 'Just now',
-            personaShortText: personaShortText,
-            persona: createSystemPrompt(agentName, companyName),
-            tools: ['Knowledge']
-        };
+        const newAgent = createInitialAgent(
+            String(Date.now()),
+            {
+                name: agentName,
+                status: 'Draft',
+                language: 'Multilingual',
+                voice: 'Natural Warm',
+                updatedAt: 'Just now',
+                personaShortText: personaShortText,
+                persona: createSystemPrompt(agentName, companyName),
+                tools: ['Knowledge']
+            },
+            'Initial version from template.'
+        );
+
         setAgents(prev => [newAgent, ...prev]);
         setSelectedAgent(newAgent);
         setIsQuickCreateOpen(false);
@@ -360,10 +411,63 @@ const App: React.FC = () => {
   const [agents, setAgents] = useState<Agent[]>(DUMMY_AGENTS);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(agents[0] || null);
   const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
+  const [versioningAgent, setVersioningAgent] = useState<{ agent: Agent; builderState?: Agent; } | null>(null);
   
   const handleStartTest = (agent: Agent) => {
     setSelectedAgent(agent);
     setView('Calls');
+  };
+
+  const saveAgentVersion = (agentId: string, description: string, stateToSave: Agent) => {
+    setAgents(prev => prev.map(agent => {
+        if (agent.id === agentId) {
+            const nextVersionNumber = agent.history.length > 0 ? Math.max(...agent.history.map(v => v.versionNumber)) + 1 : 1;
+            const newVersion: AgentVersion = {
+                id: `${agentId}-v${nextVersionNumber}-${Date.now()}`,
+                versionNumber: nextVersionNumber,
+                createdAt: new Date().toLocaleString(),
+                description: description || `Version ${nextVersionNumber}`,
+                name: stateToSave.name,
+                status: stateToSave.status,
+                language: stateToSave.language,
+                voice: stateToSave.voice,
+                personaShortText: stateToSave.personaShortText,
+                persona: stateToSave.persona,
+                tools: stateToSave.tools,
+            };
+            return { ...agent, history: [...agent.history, newVersion] };
+        }
+        return agent;
+    }));
+  };
+
+  const restoreAgentVersion = (agentId: string, versionId: string) => {
+      setAgents(prev => prev.map(agent => {
+          if (agent.id === agentId) {
+              const versionToRestore = agent.history.find(v => v.id === versionId);
+              if (!versionToRestore) return agent;
+
+              const restoredAgent = {
+                  ...agent,
+                  name: versionToRestore.name,
+                  status: versionToRestore.status,
+                  language: versionToRestore.language,
+                  voice: versionToRestore.voice,
+                  personaShortText: versionToRestore.personaShortText,
+                  persona: versionToRestore.persona,
+                  tools: versionToRestore.tools,
+                  updatedAt: 'Just now',
+              };
+
+              // Also update the selected agent if it's the one being restored
+              if (selectedAgent?.id === agentId) {
+                  setSelectedAgent(restoredAgent);
+              }
+              
+              return restoredAgent;
+          }
+          return agent;
+      }));
   };
 
   const renderView = () => {
@@ -390,7 +494,15 @@ const App: React.FC = () => {
   };
 
   return (
-    <AppContext.Provider value={{ view, setView, selectedAgent, setSelectedAgent, agents, setAgents, isQuickCreateOpen, setIsQuickCreateOpen, handleStartTest }}>
+    <AppContext.Provider value={{ 
+        view, setView, 
+        selectedAgent, setSelectedAgent, 
+        agents, setAgents, 
+        isQuickCreateOpen, setIsQuickCreateOpen, 
+        handleStartTest,
+        versioningAgent, setVersioningAgent,
+        saveAgentVersion, restoreAgentVersion
+    }}>
       <div className="flex h-screen w-full font-sans">
         <LeftNav />
         <main className="flex-1 flex flex-col">
@@ -401,6 +513,12 @@ const App: React.FC = () => {
         </main>
         <RightPanel />
         {isQuickCreateOpen && <QuickCreateModal />}
+        {versioningAgent && (
+            <AgentVersionsModal 
+                data={versioningAgent}
+                onClose={() => setVersioningAgent(null)}
+            />
+        )}
       </div>
     </AppContext.Provider>
   );

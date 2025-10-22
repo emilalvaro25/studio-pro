@@ -5,9 +5,10 @@ import { GoogleGenAI, LiveServerMessage, Modality, Blob as GenAIBlob } from '@go
 import { decode, encode, decodeAudioData } from '../services/audioUtils';
 import { TranscriptLine } from '../types';
 import { useAppContext } from '../App';
+import { getDepartmentalPrompt, Department } from '../App';
 
-const DialerButton: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void, 'data-id'?: string }> = ({ children, className, onClick, 'data-id': dataId }) => (
-    <button onClick={onClick} data-id={dataId} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${className}`}>
+const DialerButton: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void, 'data-id'?: string; disabled?: boolean }> = ({ children, className, onClick, 'data-id': dataId, disabled }) => (
+    <button onClick={onClick} data-id={dataId} disabled={disabled} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${className} disabled:opacity-50 disabled:cursor-not-allowed`}>
         {children}
     </button>
 );
@@ -73,12 +74,16 @@ const VOICE_MAP: { [key: string]: string } = {
     'Professional Male': 'Puck',
     'Upbeat Female': 'Zephyr',
     'Calm Narrator': 'Charon',
-    'Friendly': 'Fenrir'
+    'Friendly': 'Fenrir',
+    'Elegant Female': 'Aoede'
 };
+
+type IvrState = 'idle' | 'ringing' | 'language_select' | 'main_menu' | 'routing' | 'connected_to_agent' | 'ended';
 
 const CallsPage: React.FC = () => {
     const { selectedAgent } = useAppContext();
     const [callStatus, setCallStatus] = useState<'idle' | 'connecting' | 'connected' | 'ended'>('idle');
+    const [ivrState, setIvrState] = useState<IvrState>('idle');
     const [isMuted, setIsMuted] = useState(false);
     const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
     const [dialedNumber, setDialedNumber] = useState('');
@@ -90,6 +95,7 @@ const CallsPage: React.FC = () => {
     const sessionRef = useRef<any | null>(null);
     const inputAudioContextRef = useRef<AudioContext | null>(null);
     const outputAudioContextRef = useRef<AudioContext | null>(null);
+    const ivrAudioContextRef = useRef<AudioContext | null>(null);
     const mediaStreamRef = useRef<MediaStream | null>(null);
     const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
     const nextStartTimeRef = useRef<number>(0);
@@ -98,9 +104,14 @@ const CallsPage: React.FC = () => {
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordedChunksRef = useRef<Blob[]>([]);
     const audioBgRef = useRef<HTMLAudioElement | null>(null);
+    const keypadToneRef = useRef<HTMLAudioElement | null>(null);
+    const ringingToneRef = useRef<HTMLAudioElement | null>(null);
+    const failToneRef = useRef<HTMLAudioElement | null>(null);
+    // FIX: The return type of `setTimeout` in the browser is `number`, not `NodeJS.Timeout`.
+    const ivrTimeoutRef = useRef<number | null>(null);
 
-    const inputVisualizerRef = useRef<HTMLCanvasElement>(null);
-    const outputVisualizerRef = useRef<HTMLCanvasElement>(null);
+    const inputVisualizerRef = useRef<HTMLCanvasElement | null>(null);
+    const outputVisualizerRef = useRef<HTMLCanvasElement | null>(null);
     const inputAnalyserRef = useRef<AnalyserNode | null>(null);
     const outputAnalyserRef = useRef<AnalyserNode | null>(null);
     // FIX: Initialize useRef with a value. useRef<number>() is invalid; it should be useRef<number | null>(null)
@@ -153,23 +164,58 @@ const CallsPage: React.FC = () => {
         });
     }, []);
     
-    const handleConnect = useCallback(async () => {
-        if ((callStatus !== 'idle' && callStatus !== 'ended') || !selectedAgent) return;
+     const playIVRPrompt = useCallback(async (text: string): Promise<void> => {
+        return new Promise(async (resolve, reject) => {
+            addTranscriptLine('System', text);
+            if (!process.env.API_KEY) {
+                const msg = "API_KEY not set.";
+                addTranscriptLine('System', msg);
+                return reject(new Error(msg));
+            }
+            try {
+                const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                const response = await ai.models.generateContent({
+                    model: "gemini-2.5-flash-preview-tts",
+                    contents: [{ parts: [{ text }] }],
+                    config: {
+                        responseModalities: [Modality.AUDIO],
+                        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
+                    },
+                });
 
-        if (recordedAudioUrl) {
-            URL.revokeObjectURL(recordedAudioUrl);
-            setRecordedAudioUrl(null);
-        }
-        recordedChunksRef.current = [];
+                const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                if (base64Audio) {
+                    if (!ivrAudioContextRef.current) {
+                        ivrAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+                    }
+                    const audioCtx = ivrAudioContextRef.current;
+                    const audioBuffer = await decodeAudioData(decode(base64Audio), audioCtx, 24000, 1);
+                    const source = audioCtx.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(audioCtx.destination);
+                    source.start();
+                    source.onended = () => resolve();
+                } else {
+                    reject(new Error("TTS API returned no audio data."));
+                }
+            } catch (error) {
+                console.error("Error generating IVR speech:", error);
+                addTranscriptLine('System', 'Could not generate IVR prompt.');
+                reject(error);
+            }
+        });
+    }, []);
 
-        setCallStatus('connecting');
-        setTranscript([]);
-        addTranscriptLine('System', 'Connecting...');
+
+    const connectToGemini = useCallback(async (systemPrompt: string) => {
+        if (!selectedAgent) return;
+        setIvrState('connected_to_agent');
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaStreamRef.current = stream;
 
+            // Start recorder if enabled
             if (isRecording && mediaStreamRef.current) {
                 mediaRecorderRef.current = new MediaRecorder(mediaStreamRef.current, { mimeType: 'audio/webm' });
                 mediaRecorderRef.current.ondataavailable = (event) => {
@@ -184,9 +230,10 @@ const CallsPage: React.FC = () => {
             }
 
             if (!process.env.API_KEY) {
-              addTranscriptLine('System', 'API_KEY environment variable not set.');
-              setCallStatus('ended');
-              return;
+                addTranscriptLine('System', 'API_KEY environment variable not set.');
+                setCallStatus('ended');
+                setIvrState('ended');
+                return;
             }
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -205,7 +252,7 @@ const CallsPage: React.FC = () => {
                 callbacks: {
                     onopen: () => {
                         setCallStatus('connected');
-                        addTranscriptLine('System', 'Connected. You can start talking.');
+                        addTranscriptLine('System', 'Agent connected.');
 
                         if (!inputAudioContextRef.current || !mediaStreamRef.current || !inputAnalyserRef.current) return;
                         const source = inputAudioContextRef.current.createMediaStreamSource(mediaStreamRef.current);
@@ -274,7 +321,7 @@ const CallsPage: React.FC = () => {
                 config: {
                     responseModalities: [Modality.AUDIO],
                     speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_MAP[selectedAgent.voice] || 'Zephyr' } } },
-                    systemInstruction: selectedAgent.persona,
+                    systemInstruction: systemPrompt,
                     inputAudioTranscription: {},
                     outputAudioTranscription: {},
                 }
@@ -285,11 +332,16 @@ const CallsPage: React.FC = () => {
             console.error('Failed to start call:', error);
             addTranscriptLine('System', 'Failed to start call. Check permissions and console.');
             setCallStatus('ended');
+            setIvrState('ended');
             stopVisualizers();
         }
-    }, [callStatus, isMuted, startVisualizers, stopVisualizers, selectedAgent, isRecording, recordedAudioUrl]);
+    }, [isMuted, startVisualizers, stopVisualizers, selectedAgent, isRecording, recordedAudioUrl, transcriptRef]);
 
-    const handleEndCall = useCallback(() => {
+    const handleEndCall = useCallback((isFail = false) => {
+        if (ivrTimeoutRef.current) clearTimeout(ivrTimeoutRef.current);
+        ringingToneRef.current?.pause();
+        if (isFail) failToneRef.current?.play();
+        
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
             mediaRecorderRef.current.stop();
         }
@@ -306,11 +358,93 @@ const CallsPage: React.FC = () => {
 
         inputAudioContextRef.current?.close();
         outputAudioContextRef.current?.close();
+        ivrAudioContextRef.current?.close();
+        inputAudioContextRef.current = null;
+        outputAudioContextRef.current = null;
+        ivrAudioContextRef.current = null;
 
         stopVisualizers();
         setCallStatus('ended');
+        setIvrState('ended');
         addTranscriptLine('System', 'Call ended.');
     }, [stopVisualizers]);
+
+    const handleTimeout = useCallback(() => {
+        addTranscriptLine('System', 'No input detected. Call ended.');
+        handleEndCall(true);
+    }, [handleEndCall]);
+
+    useEffect(() => {
+        if (!selectedAgent) return;
+        
+        if (ivrState === 'ringing') {
+            ringingToneRef.current?.play();
+            ivrTimeoutRef.current = window.setTimeout(() => setIvrState('language_select'), 3000);
+        } else if (ivrState === 'language_select') {
+            ringingToneRef.current?.pause();
+            playIVRPrompt(`Thank you for calling ${selectedAgent.name.split(' ')[0]}. For English, press 1.`).then(() => {
+                ivrTimeoutRef.current = window.setTimeout(handleTimeout, 7000);
+            }).catch(() => handleEndCall(true));
+        } else if (ivrState === 'main_menu') {
+            const prompt = `For Flight and Booking inquiries, Press 1. For cancellation and Refund, Press 2. for Complains press 3. for special needs press 4. for other inquiries press 5. to speak to a representative press 0.`;
+            playIVRPrompt(prompt).then(() => {
+                ivrTimeoutRef.current = window.setTimeout(handleTimeout, 7000);
+            }).catch(() => handleEndCall(true));
+        }
+
+        return () => {
+            if (ivrTimeoutRef.current) clearTimeout(ivrTimeoutRef.current);
+        }
+    }, [ivrState, selectedAgent, playIVRPrompt, handleTimeout]);
+    
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            const key = event.key;
+            if (ivrState === 'language_select' || ivrState === 'main_menu') {
+                if ("0123456789#*".includes(key)) {
+                    if (ivrTimeoutRef.current) clearTimeout(ivrTimeoutRef.current);
+                    keypadToneRef.current?.play();
+                    
+                    if (ivrState === 'language_select') {
+                        if (key === '1' || key === '2') {
+                            setIvrState('main_menu');
+                        } else {
+                            playIVRPrompt("Invalid selection.").then(() => handleEndCall(true));
+                        }
+                    } else if (ivrState === 'main_menu') {
+                        const keyMap: { [key: string]: Department } = {
+                            '1': 'Booking', '2': 'Refunds', '3': 'Complaints', '4': 'Special Needs', '5': 'Other', '0': 'General',
+                        };
+                        const department = keyMap[key];
+                        if (department && selectedAgent) {
+                            setIvrState('routing');
+                            addTranscriptLine('System', `Routing to ${department}...`);
+                            const prompt = getDepartmentalPrompt(department, selectedAgent.name, selectedAgent.name.includes("Airlines") ? "Global Airlines" : "the company");
+                            connectToGemini(prompt);
+                        } else {
+                            playIVRPrompt("Invalid selection.").then(() => handleEndCall(true));
+                        }
+                    }
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [ivrState, selectedAgent, connectToGemini, handleEndCall, playIVRPrompt]);
+    
+    
+    const handleConnect = useCallback(async () => {
+        if (callStatus !== 'idle' && callStatus !== 'ended') return;
+        setTranscript([]);
+        setDialedNumber('');
+        if (recordedAudioUrl) URL.revokeObjectURL(recordedAudioUrl);
+        setRecordedAudioUrl(null);
+        recordedChunksRef.current = [];
+        setCallStatus('connecting');
+        setIvrState('ringing');
+        addTranscriptLine('System', 'Dialing...');
+    }, [callStatus, recordedAudioUrl]);
     
     useEffect(() => {
       const url = recordedAudioUrl;
@@ -318,11 +452,18 @@ const CallsPage: React.FC = () => {
         handleEndCall();
         if (url) URL.revokeObjectURL(url);
       }
-    }, [handleEndCall]);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    // handleEndCall is not stable, so we disable the exhaustive-deps rule here
 
     const toggleMute = () => setIsMuted(prev => !prev);
-    const handleDial = (digit: string) => setDialedNumber(prev => prev + digit);
-    const handleDelete = () => setDialedNumber(prev => prev.slice(0, -1));
+    const handleDial = (digit: string) => {
+        keypadToneRef.current?.play();
+        setDialedNumber(prev => prev + digit)
+    };
+    const handleDelete = () => {
+        keypadToneRef.current?.play();
+        setDialedNumber(prev => prev.slice(0, -1))
+    };
     const dialpadKeys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
 
     if (!selectedAgent) {
@@ -334,9 +475,15 @@ const CallsPage: React.FC = () => {
         );
     }
 
+    const showDialpad = ivrState === 'idle' || ivrState === 'ended' || ivrState === 'language_select' || ivrState === 'main_menu';
+
     return (
         <div className="p-6 flex flex-col h-full">
             <audio ref={audioBgRef} src="https://cdn.pixabay.com/download/audio/2022/04/24/audio_32341d3a5a.mp3" loop />
+            <audio ref={keypadToneRef} src="https://cdn.pixabay.com/download/audio/2021/08/04/audio_a5d2077636.mp3" />
+            <audio ref={ringingToneRef} src="https://cdn.pixabay.com/download/audio/2022/03/29/audio_a0a2f07064.mp3" loop />
+            <audio ref={failToneRef} src="https://cdn.pixabay.com/download/audio/2022/02/16/audio_012e87c539.mp3" />
+
             <div className="flex justify-between items-center mb-4">
                 <h1 className="text-xl font-semibold text-eburon-text">Live Call Test: <span className="text-brand-teal font-bold">{selectedAgent.name}</span></h1>
                 <div className="flex items-center space-x-4">
@@ -367,7 +514,7 @@ const CallsPage: React.FC = () => {
                             </label>
                         </>
                     ) : (
-                        isRecording && (
+                        isRecording && ivrState === 'connected_to_agent' && (
                             <div className="flex items-center space-x-2 text-danger animate-pulse">
                                 <Circle size={10} className="text-danger fill-current" />
                                 <span className="text-sm font-medium">Recording</span>
@@ -381,7 +528,13 @@ const CallsPage: React.FC = () => {
                      <div className="h-10 text-center text-3xl font-light tracking-wider text-eburon-text">{dialedNumber || ' '}</div>
                 </div>
 
-                {callStatus === 'connected' || callStatus === 'ended' || callStatus === 'connecting' ? (
+                {showDialpad ? (
+                    <div className="grid grid-cols-3 gap-4 place-items-center p-4">
+                        {dialpadKeys.map(key => <DialpadKey key={key} digit={key} onClick={handleDial}/>)}
+                        <div></div>
+                        <DialerButton className="bg-eburon-muted/10" onClick={handleDelete}><Delete size={32}/></DialerButton>
+                    </div>
+                ) : (
                      <div aria-live="polite" className="flex-1 space-y-3 overflow-y-auto pr-2">
                         {transcript.map((line, i) => (
                             <div key={i} className={`flex items-start gap-3 ${line.speaker === 'You' ? 'justify-end' : ''}`}>
@@ -393,13 +546,8 @@ const CallsPage: React.FC = () => {
                             </div>
                         ))}
                     </div>
-                ) : (
-                    <div className="grid grid-cols-3 gap-4 place-items-center p-4">
-                        {dialpadKeys.map(key => <DialpadKey key={key} digit={key} onClick={handleDial}/>)}
-                        <div></div>
-                        <DialerButton className="bg-eburon-muted/10" onClick={handleDelete}><Delete size={32}/></DialerButton>
-                    </div>
                 )}
+
 
                 {recordedAudioUrl && (
                     <div className="text-center p-2 flex-shrink-0">
@@ -421,17 +569,17 @@ const CallsPage: React.FC = () => {
                         </div>
                         
                         <div className="flex justify-center items-center space-x-6">
-                            <DialerButton className="bg-eburon-muted/20 text-eburon-muted"><Volume2 size={32}/></DialerButton>
+                             <DialerButton disabled={ivrState !== 'connected_to_agent'} className="bg-eburon-muted/20 text-eburon-muted"><Volume2 size={32}/></DialerButton>
                             {callStatus === 'idle' || callStatus === 'ended' ? (
                                 <DialerButton data-id="dialer-call" className="bg-ok/80 hover:bg-ok text-white" onClick={handleConnect}>
                                     <Phone size={32}/>
                                 </DialerButton>
                             ) : (
-                                <DialerButton data-id="dialer-end" className="bg-danger/80 hover:bg-danger text-white" onClick={handleEndCall}>
+                                <DialerButton data-id="dialer-end" className="bg-danger/80 hover:bg-danger text-white" onClick={() => handleEndCall(false)}>
                                     <PhoneOff size={32}/>
                                 </DialerButton>
                             )}
-                            <DialerButton className={`transition-colors ${isMuted ? 'bg-red-500/20 text-red-400' : 'bg-eburon-muted/20 text-eburon-muted'}`} onClick={toggleMute}>
+                            <DialerButton disabled={ivrState !== 'connected_to_agent'} className={`transition-colors ${isMuted ? 'bg-red-500/20 text-red-400' : 'bg-eburon-muted/20 text-eburon-muted'}`} onClick={toggleMute}>
                                 {isMuted ? <MicOff size={32}/> : <Mic size={32}/>}
                             </DialerButton>
                         </div>

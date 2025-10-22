@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, MoreVertical, Play, Edit, Bot } from 'lucide-react';
+import { Plus, MoreVertical, Play, Edit, Bot, History } from 'lucide-react';
 import { useAppContext } from '../App';
 import { Agent, AgentStatus } from '../types';
 
@@ -13,7 +13,7 @@ const StatusPill: React.FC<{ status: AgentStatus }> = ({ status }) => {
 };
 
 const AgentsListPage: React.FC = () => {
-    const { agents, setSelectedAgent, setIsQuickCreateOpen, setView, handleStartTest } = useAppContext();
+    const { agents, setSelectedAgent, setIsQuickCreateOpen, setView, handleStartTest, setVersioningAgent } = useAppContext();
 
     const handleEdit = (e: React.MouseEvent, agent: Agent) => {
         e.stopPropagation();
@@ -24,6 +24,11 @@ const AgentsListPage: React.FC = () => {
     const handleTest = (e: React.MouseEvent, agent: Agent) => {
         e.stopPropagation();
         handleStartTest(agent);
+    };
+    
+    const handleOpenVersions = (e: React.MouseEvent, agent: Agent) => {
+        e.stopPropagation();
+        setVersioningAgent({ agent });
     };
 
 
@@ -69,6 +74,7 @@ const AgentsListPage: React.FC = () => {
                                         <div className="flex items-center space-x-3 text-eburon-muted">
                                             <button onClick={(e) => handleTest(e, agent)} className="hover:text-brand-teal" title="Test"><Play size={18}/></button>
                                             <button onClick={(e) => handleEdit(e, agent)} className="hover:text-brand-gold" title="Edit"><Edit size={18}/></button>
+                                            <button onClick={(e) => handleOpenVersions(e, agent)} className="hover:text-eburon-text" title="Version History"><History size={18}/></button>
                                             <button className="hover:text-eburon-text" title="More" onClick={(e) => e.stopPropagation()}><MoreVertical size={18}/></button>
                                         </div>
                                     </td>

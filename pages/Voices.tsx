@@ -8,6 +8,8 @@ const voices = [
     { name: 'Professional Male', style: 'Clear, authoritative', prebuilt: 'Puck' },
     { name: 'Upbeat Female', style: 'Energetic, positive', prebuilt: 'Zephyr' },
     { name: 'Calm Narrator', style: 'Soothing, narrative', prebuilt: 'Charon' },
+    { name: 'Friendly', style: 'A pleasant and approachable tone', prebuilt: 'Fenrir' },
+    { name: 'Elegant Female', style: 'A clear and sophisticated voice', prebuilt: 'Aoede' },
 ];
 
 const VoicesPage: React.FC = () => {
