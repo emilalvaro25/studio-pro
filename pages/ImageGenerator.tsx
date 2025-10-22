@@ -206,7 +206,7 @@ const AgentBuilderPage: React.FC = () => {
                         <label className="block text-sm font-medium text-eburon-muted mb-2">Speaking Rate ({speakingRate.toFixed(1)}x)</label>
                         <input type="range" min="0.5" max="1.5" step="0.1" value={speakingRate} onChange={e => setSpeakingRate(parseFloat(e.target.value))} className="w-full h-2 bg-eburon-border rounded-lg appearance-none cursor-pointer accent-brand-teal" />
                     </div>
-                     <div className="flex items-center space-x-2 pt-2">
+                     <div className="flex items-center space-x-2 pt-2 cursor-help" title="Allows the user to interrupt the agent's speech.">
                          <button onClick={() => setBargeIn(!bargeIn)} className="flex items-center space-x-3 text-left">
                             {bargeIn ? <CheckSquare size={18} className="text-brand-teal"/> : <Square size={18} className="text-eburon-muted"/>}
                          </button>

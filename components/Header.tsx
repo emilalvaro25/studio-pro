@@ -28,7 +28,7 @@ export const Header: React.FC = () => {
     return (
         <header className="flex items-center justify-between h-14 px-4 bg-eburon-card border-b border-eburon-border flex-shrink-0">
             <div className="flex items-center space-x-3">
-                <div className="w-6 h-6 bg-brand-teal rounded-full"></div>
+                <img src="https://eburon.vercel.app/logo-dark.png" alt="Eburon Logo" className="w-6 h-6" />
                 <span className="font-semibold text-lg text-eburon-text">Eburon</span>
             </div>
             <div className="flex items-center space-x-2">

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Phone, Mic, MicOff, Volume2, User, Bot, Clock } from 'lucide-react';
+import { Phone, Mic, MicOff, Volume2, User, Bot, Delete } from 'lucide-react';
 import { GoogleGenAI, LiveSession, LiveServerMessage, Modality, Blob } from '@google/genai';
 import { decode, encode, decodeAudioData } from '../services/audioUtils';
 import { TranscriptLine } from '../types';
@@ -10,10 +10,42 @@ const DialerButton: React.FC<{ children: React.ReactNode; className?: string; on
     </button>
 );
 
+const DialpadKey: React.FC<{ digit: string; subtext?: string; onClick: (digit: string) => void }> = ({ digit, subtext, onClick }) => (
+    <button onClick={() => onClick(digit)} className="rounded-full w-20 h-20 flex flex-col items-center justify-center bg-eburon-bg hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-teal">
+        <span className="text-3xl font-light">{digit}</span>
+        {subtext && <span className="text-xs text-eburon-muted -mt-1">{subtext}</span>}
+    </button>
+);
+
+const drawVisualizer = (
+    analyser: AnalyserNode,
+    canvasCtx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    color: string
+) => {
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    analyser.getByteFrequencyData(dataArray);
+
+    canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const barWidth = (canvas.width / bufferLength) * 2.5;
+    let x = 0;
+
+    for (let i = 0; i < bufferLength; i++) {
+        const barHeight = dataArray[i] / 2;
+        canvasCtx.fillStyle = color;
+        canvasCtx.fillRect(x, canvas.height - barHeight / 2, barWidth, barHeight);
+        x += barWidth + 1;
+    }
+};
+
+
 const CallsPage: React.FC = () => {
     const [callStatus, setCallStatus] = useState<'idle' | 'connecting' | 'connected' | 'ended'>('idle');
     const [isMuted, setIsMuted] = useState(false);
     const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
+    const [dialedNumber, setDialedNumber] = useState('');
     
     const sessionRef = useRef<LiveSession | null>(null);
     const inputAudioContextRef = useRef<AudioContext | null>(null);
@@ -23,9 +55,43 @@ const CallsPage: React.FC = () => {
     const nextStartTimeRef = useRef<number>(0);
     const audioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
 
+    const inputVisualizerRef = useRef<HTMLCanvasElement>(null);
+    const outputVisualizerRef = useRef<HTMLCanvasElement>(null);
+    const inputAnalyserRef = useRef<AnalyserNode | null>(null);
+    const outputAnalyserRef = useRef<AnalyserNode | null>(null);
+    const animationFrameRef = useRef<number>();
+
+
     const addTranscriptLine = (speaker: 'You' | 'Agent' | 'System', text: string) => {
         setTranscript(prev => [...prev, { speaker, text, timestamp: Date.now() }]);
     };
+
+    const startVisualizers = useCallback(() => {
+        const draw = () => {
+            if (inputAnalyserRef.current && inputVisualizerRef.current) {
+                const canvasCtx = inputVisualizerRef.current.getContext('2d');
+                if (canvasCtx) drawVisualizer(inputAnalyserRef.current, canvasCtx, inputVisualizerRef.current, '#f6c453');
+            }
+            if (outputAnalyserRef.current && outputVisualizerRef.current) {
+                const canvasCtx = outputVisualizerRef.current.getContext('2d');
+                if (canvasCtx) drawVisualizer(outputAnalyserRef.current, canvasCtx, outputVisualizerRef.current, '#19c2ff');
+            }
+            animationFrameRef.current = requestAnimationFrame(draw);
+        };
+        draw();
+    }, []);
+
+    const stopVisualizers = useCallback(() => {
+        if (animationFrameRef.current) {
+            cancelAnimationFrame(animationFrameRef.current);
+        }
+        [inputVisualizerRef, outputVisualizerRef].forEach(ref => {
+            if (ref.current) {
+                const canvasCtx = ref.current.getContext('2d');
+                canvasCtx?.clearRect(0, 0, ref.current.width, ref.current.height);
+            }
+        });
+    }, []);
     
     const handleConnect = useCallback(async () => {
         if (callStatus !== 'idle' && callStatus !== 'ended') return;
@@ -44,9 +110,16 @@ const CallsPage: React.FC = () => {
             }
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-            // Fix: Use `(window as any).webkitAudioContext` for TypeScript compatibility.
             inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
             outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+            
+            // Setup visualizers
+            inputAnalyserRef.current = inputAudioContextRef.current.createAnalyser();
+            inputAnalyserRef.current.fftSize = 256;
+            outputAnalyserRef.current = outputAudioContextRef.current.createAnalyser();
+            outputAnalyserRef.current.fftSize = 256;
+
+            startVisualizers();
 
             const sessionPromise = ai.live.connect({
                 model: 'gemini-2.5-flash-native-audio-preview-09-2025',
@@ -55,7 +128,7 @@ const CallsPage: React.FC = () => {
                         setCallStatus('connected');
                         addTranscriptLine('System', 'Connected. You can start talking.');
 
-                        if (!inputAudioContextRef.current || !mediaStreamRef.current) return;
+                        if (!inputAudioContextRef.current || !mediaStreamRef.current || !inputAnalyserRef.current) return;
                         const source = inputAudioContextRef.current.createMediaStreamSource(mediaStreamRef.current);
                         scriptProcessorRef.current = inputAudioContextRef.current.createScriptProcessor(4096, 1, 1);
                         
@@ -69,18 +142,20 @@ const CallsPage: React.FC = () => {
                             sessionPromise.then(session => session.sendRealtimeInput({ media: pcmBlob }));
                         };
                         
-                        source.connect(scriptProcessorRef.current);
+                        source.connect(inputAnalyserRef.current);
+                        inputAnalyserRef.current.connect(scriptProcessorRef.current);
                         scriptProcessorRef.current.connect(inputAudioContextRef.current.destination);
                     },
                     onmessage: async (message: LiveServerMessage) => {
                         if (message.serverContent?.modelTurn?.parts[0]?.inlineData?.data) {
                             const audioData = message.serverContent.modelTurn.parts[0].inlineData.data;
-                            if (outputAudioContextRef.current) {
+                            if (outputAudioContextRef.current && outputAnalyserRef.current) {
                                 nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputAudioContextRef.current.currentTime);
                                 const audioBuffer = await decodeAudioData(decode(audioData), outputAudioContextRef.current, 24000, 1);
                                 const source = outputAudioContextRef.current.createBufferSource();
                                 source.buffer = audioBuffer;
-                                source.connect(outputAudioContextRef.current.destination);
+                                source.connect(outputAnalyserRef.current);
+                                outputAnalyserRef.current.connect(outputAudioContextRef.current.destination);
                                 source.start(nextStartTimeRef.current);
                                 nextStartTimeRef.current += audioBuffer.duration;
                                 audioSourcesRef.current.add(source);
@@ -125,8 +200,9 @@ const CallsPage: React.FC = () => {
             console.error('Failed to start call:', error);
             addTranscriptLine('System', 'Failed to start call. Check permissions and console.');
             setCallStatus('ended');
+            stopVisualizers();
         }
-    }, [callStatus, isMuted]);
+    }, [callStatus, isMuted, startVisualizers, stopVisualizers]);
 
     const handleEndCall = () => {
         sessionRef.current?.close();
@@ -141,27 +217,55 @@ const CallsPage: React.FC = () => {
         inputAudioContextRef.current?.close();
         outputAudioContextRef.current?.close();
 
+        stopVisualizers();
         setCallStatus('ended');
         addTranscriptLine('System', 'Call ended.');
     };
     
     const toggleMute = () => setIsMuted(prev => !prev);
-    
+    const handleDial = (digit: string) => setDialedNumber(prev => prev + digit);
+    const handleDelete = () => setDialedNumber(prev => prev.slice(0, -1));
+    const dialpadKeys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
+
     return (
         <div className="p-6 flex flex-col h-full">
             <h1 className="text-xl font-semibold text-eburon-text mb-4">Live Call Test</h1>
             <div className="flex-1 bg-eburon-card border border-eburon-border rounded-xl p-4 flex flex-col space-y-4 overflow-hidden">
-                <div aria-live="polite" className="flex-1 space-y-3 overflow-y-auto pr-2">
-                    {transcript.map((line, i) => (
-                        <div key={i} className={`flex items-start gap-3 ${line.speaker === 'You' ? 'justify-end' : ''}`}>
-                             {line.speaker === 'Agent' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-teal flex items-center justify-center"><Bot size={18}/></div>}
-                             <div className={`p-3 rounded-lg max-w-lg ${line.speaker === 'You' ? 'bg-eburon-border' : 'bg-eburon-bg'} ${line.speaker === 'System' ? 'text-center w-full bg-transparent text-eburon-muted text-xs' : ''}`}>
-                                <p>{line.text}</p>
-                            </div>
-                            {line.speaker === 'You' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-eburon-border flex items-center justify-center"><User size={18}/></div>}
-                        </div>
-                    ))}
+                <div className="flex-shrink-0 p-4 space-y-4">
+                     <div className="h-10 text-center text-3xl font-light tracking-wider text-eburon-text">{dialedNumber || ' '}</div>
+                     <div className="flex justify-around items-center h-12">
+                         <div className="flex items-center space-x-2">
+                             <User size={16} className="text-brand-gold"/>
+                             <canvas ref={inputVisualizerRef} width="150" height="40" />
+                         </div>
+                         <div className="flex items-center space-x-2">
+                             <Bot size={16} className="text-brand-teal"/>
+                             <canvas ref={outputVisualizerRef} width="150" height="40" />
+                         </div>
+                     </div>
                 </div>
+
+                {callStatus === 'connected' ? (
+                     <div aria-live="polite" className="flex-1 space-y-3 overflow-y-auto pr-2">
+                        {transcript.map((line, i) => (
+                            <div key={i} className={`flex items-start gap-3 ${line.speaker === 'You' ? 'justify-end' : ''}`}>
+                                 {line.speaker === 'Agent' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-teal flex items-center justify-center"><Bot size={18}/></div>}
+                                 <div className={`p-3 rounded-lg max-w-lg ${line.speaker === 'You' ? 'bg-eburon-border' : 'bg-eburon-bg'} ${line.speaker === 'System' ? 'text-center w-full bg-transparent text-eburon-muted text-xs' : ''}`}>
+                                    <p>{line.text}</p>
+                                </div>
+                                {line.speaker === 'You' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-eburon-border flex items-center justify-center"><User size={18}/></div>}
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-3 gap-4 place-items-center p-4">
+                        {dialpadKeys.map(key => <DialpadKey key={key} digit={key} onClick={handleDial}/>)}
+                        <div></div>
+                        <DialerButton className="bg-eburon-muted/10" onClick={handleDelete}><Delete size={32}/></DialerButton>
+                    </div>
+                )}
+                
+
                  <div className="flex-shrink-0 flex justify-center items-center space-x-6 p-4">
                     <DialerButton className="bg-eburon-muted/20 text-eburon-muted"><Volume2 size={32}/></DialerButton>
                      {callStatus === 'idle' || callStatus === 'ended' ? (
@@ -173,7 +277,7 @@ const CallsPage: React.FC = () => {
                             <Phone size={32}/>
                         </DialerButton>
                      )}
-                    <DialerButton className="bg-eburon-muted/20 text-eburon-muted" onClick={toggleMute}>
+                    <DialerButton className={`transition-colors ${isMuted ? 'bg-red-500/20 text-red-400' : 'bg-eburon-muted/20 text-eburon-muted'}`} onClick={toggleMute}>
                         {isMuted ? <MicOff size={32}/> : <Mic size={32}/>}
                     </DialerButton>
                 </div>
