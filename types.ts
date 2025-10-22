@@ -75,4 +75,16 @@ export interface CallRecord {
   recordingUrl: string;
 }
 
+export type KnowledgeBaseStatus = 'Indexing...' | 'Indexed' | 'Failed';
+
+export interface KnowledgeBase {
+  id: string;
+  sourceName: string;
+  storagePath: string;
+  chunks: number | null;
+  status: KnowledgeBaseStatus;
+  updatedAt: string;
+}
+
+
 export type Theme = 'light' | 'dark';

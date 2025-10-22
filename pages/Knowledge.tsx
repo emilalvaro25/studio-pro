@@ -2,21 +2,7 @@ import React, { useState, Fragment } from 'react';
 import { Plus, Upload, MoreVertical, RefreshCw, Trash2, Search, X, Loader2, UploadCloud } from 'lucide-react';
 import { useAppContext } from '../App';
 import Tooltip from '../components/Tooltip';
-
-interface KnowledgeBase {
-    id: number;
-    source: string;
-    chunks: number;
-    status: 'Indexed' | 'Indexing...';
-    updated: string;
-}
-
-const initialKnowledgeBases: KnowledgeBase[] = [
-    { id: 4, source: 'Hyper-Realistic AI CSR KB.docx', chunks: 128, status: 'Indexed', updated: 'Just now' },
-    { id: 1, source: 'Airlines FAQ.pdf', chunks: 152, status: 'Indexed', updated: '2 hours ago' },
-    { id: 2, source: 'https://bank.example/terms', chunks: 88, status: 'Indexed', updated: '1 day ago' },
-    { id: 3, source: 'Telecom Plans 2024.docx', chunks: 210, status: 'Indexed', updated: '5 minutes ago' },
-];
+import { KnowledgeBase } from '../types';
 
 const KnowledgeBaseDetailsDrawer: React.FC<{ kb: KnowledgeBase; onClose: () => void; }> = ({ kb, onClose }) => {
     const [searchQuery, setSearchQuery] = useState('');
@@ -49,7 +35,7 @@ const KnowledgeBaseDetailsDrawer: React.FC<{ kb: KnowledgeBase; onClose: () => v
                 <div className="flex justify-between items-center p-4 border-b border-border flex-shrink-0">
                     <div>
                         <h2 className="text-lg font-semibold text-text">Knowledge Base Details</h2>
-                        <p className="text-sm text-subtle truncate" title={kb.source}>{kb.source}</p>
+                        <p className="text-sm text-subtle truncate" title={kb.sourceName}>{kb.sourceName}</p>
                     </div>
                     <button onClick={onClose} className="text-subtle hover:text-text"><X size={24} /></button>
                 </div>
@@ -110,10 +96,9 @@ const KnowledgeBaseDetailsDrawer: React.FC<{ kb: KnowledgeBase; onClose: () => v
 };
 
 const KnowledgePage: React.FC = () => {
-    const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>(initialKnowledgeBases);
+    const { knowledgeBases, uploadKnowledgeFile, deleteKnowledgeBase } = useAppContext();
     const [selectedKb, setSelectedKb] = useState<KnowledgeBase | null>(null);
     const [isDragging, setIsDragging] = useState(false);
-    const { addNotification } = useAppContext();
 
     const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); };
     const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
@@ -126,28 +111,16 @@ const KnowledgePage: React.FC = () => {
 
         const files = e.dataTransfer.files;
         if (files && files.length > 0) {
-            const file = files[0];
-            addNotification(`Uploading "${file.name}"...`, 'info');
-            const newKb: KnowledgeBase = { id: Date.now(), source: file.name, chunks: 0, status: 'Indexing...', updated: 'Just now' };
-            setKnowledgeBases(prev => [newKb, ...prev]);
-
-            setTimeout(() => {
-                setKnowledgeBases(prev => prev.map(kb => 
-                    kb.id === newKb.id ? { ...kb, status: 'Indexed', chunks: Math.floor(Math.random() * 200) + 50 } : kb
-                ));
-                 addNotification(`"${newKb.source}" has been successfully indexed.`, 'success');
-            }, 3000);
+            uploadKnowledgeFile(files[0]);
         }
     };
     
-    const handleDelete = (e: React.MouseEvent, kbId: number, kbSource: string) => {
+    const handleDelete = (e: React.MouseEvent, kb: KnowledgeBase) => {
         e.stopPropagation();
-        if (window.confirm(`Are you sure you want to delete the knowledge base "${kbSource}"?`)) {
-            setKnowledgeBases(prev => prev.filter(kb => kb.id !== kbId));
-            addNotification(`Knowledge base "${kbSource}" deleted.`, 'success');
+        if (window.confirm(`Are you sure you want to delete the knowledge base "${kb.sourceName}"?`)) {
+            deleteKnowledgeBase(kb);
         }
     };
-
 
     return (
         <Fragment>
@@ -173,19 +146,19 @@ const KnowledgePage: React.FC = () => {
                         <tbody className="divide-y divide-border">
                             {knowledgeBases.map(kb => (
                                 <tr key={kb.id} className="hover:bg-panel cursor-pointer" onClick={() => setSelectedKb(kb)}>
-                                    <td className="p-4 font-semibold text-text">{kb.source}</td>
-                                    <td className="p-4 text-subtle">{kb.chunks}</td>
+                                    <td className="p-4 font-semibold text-text">{kb.sourceName}</td>
+                                    <td className="p-4 text-subtle">{kb.chunks || 'N/A'}</td>
                                     <td className="p-4 text-subtle">
                                         <span className={`flex items-center space-x-2 ${kb.status === 'Indexing...' ? 'text-warn' : 'text-ok'}`}>
                                             {kb.status === 'Indexing...' && <Loader2 size={14} className="animate-spin" />}
                                             <span>{kb.status}</span>
                                         </span>
                                     </td>
-                                    <td className="p-4 text-subtle">{kb.updated}</td>
+                                    <td className="p-4 text-subtle">{kb.updatedAt}</td>
                                     <td className="p-4">
                                         <div className="flex items-center justify-center space-x-2 text-subtle">
                                             <Tooltip text="Re-index"><button className="p-2 rounded-full hover:text-primary hover:bg-primary/10" onClick={(e) => e.stopPropagation()}><RefreshCw size={16}/></button></Tooltip>
-                                            <Tooltip text="Remove"><button onClick={(e) => handleDelete(e, kb.id, kb.source)} className="p-2 rounded-full hover:text-danger hover:bg-danger/10"><Trash2 size={16}/></button></Tooltip>
+                                            <Tooltip text="Remove"><button onClick={(e) => handleDelete(e, kb)} className="p-2 rounded-full hover:text-danger hover:bg-danger/10"><Trash2 size={16}/></button></Tooltip>
                                             <Tooltip text="More"><button className="p-2 rounded-full hover:text-text hover:bg-panel" onClick={(e) => e.stopPropagation()}><MoreVertical size={16}/></button></Tooltip>
                                         </div>
                                     </td>

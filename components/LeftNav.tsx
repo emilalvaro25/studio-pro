@@ -42,7 +42,7 @@ const NavItem: React.FC<NavItemProps> = ({ icon, label, viewName, count, hasActi
 };
 
 export const LeftNav: React.FC = () => {
-    const { agents, callHistory, isLeftNavOpen, setIsLeftNavOpen } = useAppContext();
+    const { agents, callHistory, knowledgeBases, isLeftNavOpen, setIsLeftNavOpen } = useAppContext();
     return (
         <nav className={`bg-surface border-r border-border flex flex-col z-40
             fixed inset-y-0 left-0
@@ -56,7 +56,7 @@ export const LeftNav: React.FC = () => {
                 <NavItem icon={<Bot size={20} />} label="Agents" viewName="Agents" count={agents.length} isNavOpen={isLeftNavOpen} />
                 <NavItem icon={<LayoutGrid size={20} />} label="Templates" viewName="Templates" isNavOpen={isLeftNavOpen} />
                 <NavItem icon={<Phone size={20} />} label="Calls" viewName="Calls" count={callHistory.length} isNavOpen={isLeftNavOpen} />
-                <NavItem icon={<Library size={20} />} label="Knowledge" viewName="Knowledge" count={3} isNavOpen={isLeftNavOpen} />
+                <NavItem icon={<Library size={20} />} label="Knowledge" viewName="Knowledge" count={knowledgeBases.length} isNavOpen={isLeftNavOpen} />
                 <NavItem icon={<Voicemail size={20} />} label="Voices" viewName="Voices" isNavOpen={isLeftNavOpen} />
                 <NavItem icon={<Send size={20} />} label="Deploy" viewName="Deploy" isNavOpen={isLeftNavOpen} />
                 <NavItem icon={<PlugZap size={20} />} label="Integrations" viewName="Integrations" isNavOpen={isLeftNavOpen} />

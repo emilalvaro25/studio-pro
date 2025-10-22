@@ -3,7 +3,7 @@ import { createClient, SupabaseClient, Session, User } from '@supabase/supabase-
 import { Header } from './components/Header';
 import { LeftNav } from './components/LeftNav';
 import { RightPanel } from './components/RightPanel';
-import { Agent, View, AgentVersion, CallRecord, Notification, NotificationType, Theme } from './types';
+import { Agent, View, AgentVersion, CallRecord, Notification, NotificationType, Theme, KnowledgeBase } from './types';
 import { X, CheckCircle, XCircle, Info, AlertTriangle, Loader2 } from 'lucide-react';
 
 // Lazy load page components for better performance
@@ -74,6 +74,15 @@ const dbToVersion = (dbData: any): AgentVersion => ({
     persona: dbData.persona,
     tools: dbData.tools || [],
     introSpiel: dbData.intro_spiel || { type: 'Concise' },
+});
+
+const dbToKb = (dbData: any): KnowledgeBase => ({
+    id: dbData.id,
+    sourceName: dbData.source_name,
+    storagePath: dbData.storage_path,
+    chunks: dbData.chunks,
+    status: dbData.status,
+    updatedAt: new Date(dbData.updated_at).toLocaleString(),
 });
 
 // --- Notification Component ---
@@ -155,6 +164,9 @@ interface AppContextType {
   user: User | null;
   theme: Theme;
   setTheme: (theme: Theme) => void;
+  knowledgeBases: KnowledgeBase[];
+  uploadKnowledgeFile: (file: File) => Promise<void>;
+  deleteKnowledgeBase: (kb: KnowledgeBase) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -417,6 +429,7 @@ const App: React.FC = () => {
     const [view, setView] = useState<View>('Home');
     const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
     const [agents, setAgents] = useState<Agent[]>([]);
+    const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
     const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
     const [versioningAgent, setVersioningAgent] = useState<{ agent: Agent; builderState?: Agent; } | null>(null);
     const [callHistory, setCallHistory] = useState<CallRecord[]>([]);
@@ -500,7 +513,14 @@ const App: React.FC = () => {
             setIsSupabaseConnected(true);
 
             try {
-                const { data: agentsFromDb, error: agentsError } = await supabase.from('agents').select('*');
+                // Fetch agents, KBs, and call history in parallel
+                const [agentsRes, kbsRes, callHistoryRes] = await Promise.all([
+                    supabase.from('agents').select('*'),
+                    supabase.from('knowledge_bases').select('*'),
+                    supabase.from('call_history').select('*').order('start_time', { ascending: false }).limit(50)
+                ]);
+
+                const { data: agentsFromDb, error: agentsError } = agentsRes;
                 if (agentsError) throw agentsError;
 
                 if (agentsFromDb) {
@@ -512,7 +532,13 @@ const App: React.FC = () => {
                     setAgents(agentsWithHistory);
                 }
 
-                const { data: callHistoryFromDb, error: callHistoryError } = await supabase.from('call_history').select('*').order('start_time', { ascending: false }).limit(50);
+                const { data: kbsFromDb, error: kbsError } = kbsRes;
+                if (kbsError) throw kbsError;
+                if (kbsFromDb) {
+                    setKnowledgeBases(kbsFromDb.map(dbToKb));
+                }
+
+                const { data: callHistoryFromDb, error: callHistoryError } = callHistoryRes;
                 if (callHistoryError) throw callHistoryError;
                 if (callHistoryFromDb) {
                     setCallHistory(callHistoryFromDb.map((rec: any) => ({
@@ -595,8 +621,8 @@ const App: React.FC = () => {
     
     const cloneAgent = useCallback(async (agentToClone: Agent) => {
         const supabase = getSupabaseClient();
-        if (!supabase) {
-            addNotification('Supabase not configured.', 'error');
+        if (!supabase || !user) {
+            addNotification('Supabase not configured or user not found.', 'error');
             return;
         }
         try {
@@ -607,7 +633,7 @@ const App: React.FC = () => {
                 status: 'Draft' as const,
             };
             
-            const { data, error } = await supabase.from('agents').insert(agentToDb(clonedAgentData)).select();
+            const { data, error } = await supabase.from('agents').insert({ ...agentToDb(clonedAgentData), user_id: user.id }).select();
             if (error) throw error;
 
             const newAgentFromDb = dbToAgent(data[0]);
@@ -621,7 +647,7 @@ const App: React.FC = () => {
             const message = error instanceof Error ? error.message : "Unknown error";
             addNotification(`Failed to clone agent: ${message}`, 'error');
         }
-    }, [addNotification]);
+    }, [addNotification, user]);
 
     const saveAgentVersion = async (agentId: string, description: string, stateToSave: Agent) => {
         const supabase = getSupabaseClient();
@@ -683,7 +709,7 @@ const App: React.FC = () => {
 
     const addCallToHistory = async (call: CallRecord) => {
         const supabase = getSupabaseClient();
-        if (!supabase) {
+        if (!supabase || !user) {
             addNotification('Supabase not configured. Call record not saved.', 'warn');
             return;
         }
@@ -696,6 +722,7 @@ const App: React.FC = () => {
                 duration_ms: call.duration,
                 transcript: call.transcript,
                 recording_url: call.recordingUrl,
+                user_id: user.id,
             };
             const { error } = await supabase.from('call_history').insert(callToDb);
             if (error) throw error;
@@ -708,8 +735,8 @@ const App: React.FC = () => {
 
     const createAgent = async (agentData: Omit<Agent, 'id' | 'history' | 'updatedAt' | 'status'>, fromTemplate = false) => {
         const supabase = getSupabaseClient();
-        if (!supabase) {
-            addNotification('Supabase not configured.', 'error');
+        if (!supabase || !user) {
+            addNotification('Supabase not configured or user not found.', 'error');
             return;
         }
         
@@ -717,12 +744,10 @@ const App: React.FC = () => {
             const newAgentData = {
                 ...agentData,
                 status: 'Draft' as const,
-                // Fix: Add missing 'updatedAt' property required by agentToDb function signature.
-                // This is for type-safety; the database will set its own timestamp on creation.
                 updatedAt: new Date().toLocaleString(),
             };
     
-            const { data, error } = await supabase.from('agents').insert(agentToDb(newAgentData)).select();
+            const { data, error } = await supabase.from('agents').insert({ ...agentToDb(newAgentData), user_id: user.id }).select();
             if (error) throw error;
 
             const newAgent: Agent = { ...dbToAgent(data[0]), history: [] };
@@ -739,6 +764,80 @@ const App: React.FC = () => {
         } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown error";
             addNotification(`Failed to create agent: ${message}`, 'error');
+        }
+    };
+
+    const uploadKnowledgeFile = async (file: File) => {
+        const supabase = getSupabaseClient();
+        if (!supabase || !user) {
+            addNotification('Supabase not configured or user not found.', 'error');
+            return;
+        }
+
+        const filePath = `knowledge_files/${user.id}/${Date.now()}_${file.name}`;
+        addNotification(`Uploading "${file.name}"...`, 'info');
+
+        try {
+            // 1. Upload file to storage
+            const { error: uploadError } = await supabase.storage.from('studio').upload(filePath, file);
+            if (uploadError) throw uploadError;
+
+            // 2. Add entry to knowledge_bases table
+            const newKbData = {
+                user_id: user.id,
+                source_name: file.name,
+                storage_path: filePath,
+                status: 'Indexing...' as const,
+                chunks: null,
+            };
+            const { data, error: insertError } = await supabase.from('knowledge_bases').insert(newKbData).select();
+            if (insertError) throw insertError;
+
+            const newKb = dbToKb(data[0]);
+            setKnowledgeBases(prev => [newKb, ...prev]);
+
+            // 3. Simulate indexing and update entry
+            setTimeout(async () => {
+                const updatedKbData = {
+                    status: 'Indexed' as const,
+                    chunks: Math.floor(Math.random() * 200) + 50,
+                };
+                const { data: updatedData, error: updateError } = await supabase.from('knowledge_bases').update(updatedKbData).eq('id', newKb.id).select();
+                if (updateError) throw updateError;
+
+                setKnowledgeBases(prev => prev.map(kb => kb.id === newKb.id ? dbToKb(updatedData[0]) : kb));
+                addNotification(`"${newKb.sourceName}" has been successfully indexed.`, 'success');
+            }, 3000);
+
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            addNotification(`Failed to upload file: ${message}`, 'error');
+        }
+    };
+
+    const deleteKnowledgeBase = async (kb: KnowledgeBase) => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+            addNotification('Supabase not configured.', 'error');
+            return;
+        }
+
+        try {
+            // 1. Delete from storage
+            const { error: storageError } = await supabase.storage.from('studio').remove([kb.storagePath]);
+            if (storageError) {
+                console.warn('Storage deletion failed, but proceeding with DB deletion:', storageError.message);
+            }
+
+            // 2. Delete from DB
+            const { error: dbError } = await supabase.from('knowledge_bases').delete().eq('id', kb.id);
+            if (dbError) throw dbError;
+
+            setKnowledgeBases(prev => prev.filter(k => k.id !== kb.id));
+            addNotification(`Knowledge base "${kb.sourceName}" deleted.`, 'success');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            addNotification(`Failed to delete knowledge base: ${message}`, 'error');
         }
     };
 
@@ -775,8 +874,9 @@ const App: React.FC = () => {
         isSupabaseConnected,
         isLeftNavOpen, setIsLeftNavOpen,
         isRightPanelOpen, setIsRightPanelOpen,
-        session, user, theme, setTheme
-    }), [view, selectedAgent, agents, isQuickCreateOpen, versioningAgent, callHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent, cloneAgent, createAgent, isSupabaseConnected, isLeftNavOpen, isRightPanelOpen, session, user, theme]);
+        session, user, theme, setTheme,
+        knowledgeBases, uploadKnowledgeFile, deleteKnowledgeBase
+    }), [view, selectedAgent, agents, isQuickCreateOpen, versioningAgent, callHistory, notifications, addNotification, removeNotification, updateAgent, deleteAgent, cloneAgent, createAgent, isSupabaseConnected, isLeftNavOpen, isRightPanelOpen, session, user, theme, knowledgeBases]);
 
     const renderView = () => {
         switch (view) {

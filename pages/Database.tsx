@@ -4,7 +4,7 @@ import { useAppContext } from '../App';
 import Tooltip from '../components/Tooltip';
 
 const schemaContent = `-- Eburon CSR Studio Supabase Schema
--- Version 1.0
+-- Version 1.1 - Added User Ownership and RLS
 
 -- This script provides all the necessary SQL commands to set up the database schema
 -- for the Eburon CSR Studio application on a Supabase (PostgreSQL) instance.
@@ -16,6 +16,7 @@ CREATE TYPE kb_status AS ENUM ('Indexing...', 'Indexed', 'Failed');
 -- 2. Create the main 'agents' table to store core agent configurations.
 CREATE TABLE agents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     status agent_status DEFAULT 'Draft',
     language TEXT DEFAULT 'Multilingual',
@@ -29,13 +30,11 @@ CREATE TABLE agents (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Enable Row Level Security (RLS) for the agents table.
 ALTER TABLE agents ENABLE ROW LEVEL SECURITY;
--- Example policy: Allow public read-only access. Modify as needed for your auth rules.
-CREATE POLICY "Allow public read access to agents" ON agents FOR SELECT USING (true);
--- Example policy: Allow users to manage their own agents.
--- CREATE POLICY "Allow individual management of agents" ON agents FOR ALL
--- USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can manage their own agents" ON agents
+    FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
 
 
 -- 3. Create 'agent_versions' to track changes to each agent over time.
@@ -61,12 +60,16 @@ CREATE TABLE agent_versions (
 );
 
 ALTER TABLE agent_versions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read access to versions" ON agent_versions FOR SELECT USING (true);
+CREATE POLICY "Users can manage versions of their own agents" ON agent_versions
+    FOR ALL
+    USING ( (SELECT auth.uid() FROM agents WHERE id = agent_versions.agent_id) = auth.uid() )
+    WITH CHECK ( (SELECT auth.uid() FROM agents WHERE id = agent_versions.agent_id) = auth.uid() );
 
 
 -- 4. Create 'call_history' to log all test and deployment calls.
 CREATE TABLE call_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
     agent_name TEXT NOT NULL, -- Denormalized for easier access
     start_time TIMESTAMPTZ NOT NULL,
@@ -77,14 +80,18 @@ CREATE TABLE call_history (
 );
 
 ALTER TABLE call_history ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read access to call history" ON call_history FOR SELECT USING (true);
+CREATE POLICY "Users can manage their own call history" ON call_history
+    FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
 
 
 -- 5. Create 'knowledge_bases' to store information about uploaded documents.
 CREATE TABLE knowledge_bases (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     source_name TEXT NOT NULL, -- e.g., "Airlines FAQ.pdf"
-    storage_path TEXT NOT NULL, -- e.g., "studio/knowledge_files/airlines_faq.pdf"
+    storage_path TEXT NOT NULL, -- e.g., "knowledge_files/user-id/file.pdf"
     chunks INT,
     status kb_status DEFAULT 'Indexing...',
     created_at TIMESTAMPTZ DEFAULT now(),
@@ -92,7 +99,10 @@ CREATE TABLE knowledge_bases (
 );
 
 ALTER TABLE knowledge_bases ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read access to KBs" ON knowledge_bases FOR SELECT USING (true);
+CREATE POLICY "Users can manage their own knowledge bases" ON knowledge_bases
+    FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
 
 
 -- 6. Create a link table for the many-to-many relationship between agents and knowledge bases.
@@ -103,7 +113,16 @@ CREATE TABLE agent_knowledge_links (
 );
 
 ALTER TABLE agent_knowledge_links ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read access to KB links" ON agent_knowledge_links FOR SELECT USING (true);
+CREATE POLICY "Users can link their own agents and KBs" ON agent_knowledge_links
+    FOR ALL
+    USING (
+        (SELECT auth.uid() FROM agents WHERE id = agent_knowledge_links.agent_id) = auth.uid() AND
+        (SELECT auth.uid() FROM knowledge_bases WHERE id = agent_knowledge_links.kb_id) = auth.uid()
+    )
+    WITH CHECK (
+        (SELECT auth.uid() FROM agents WHERE id = agent_knowledge_links.agent_id) = auth.uid() AND
+        (SELECT auth.uid() FROM knowledge_bases WHERE id = agent_knowledge_links.kb_id) = auth.uid()
+    );
 
 
 -- 7. Recommendations for Supabase Storage setup (to be done in the Supabase Dashboard)
