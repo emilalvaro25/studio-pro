@@ -124,6 +124,52 @@ const IVR_CONFIG = {
     }
 };
 
+const HistoryTranscriptView: React.FC<{
+    transcript: TranscriptLine[];
+    startTime: number;
+    playbackTime: number; // in ms
+}> = ({ transcript, startTime, playbackTime }) => (
+    <div aria-live="polite" className="flex-1 space-y-4 overflow-y-auto pr-2 bg-eburon-bg p-4 rounded-lg">
+        {transcript.map((line, i) => {
+            const relativeTime = line.timestamp - startTime;
+            const displayTime = Math.max(0, relativeTime);
+            
+            const minutes = Math.floor(displayTime / 60000).toString().padStart(2, '0');
+            const seconds = Math.floor((displayTime % 60000) / 1000).toString().padStart(2, '0');
+            const timestampStr = `${minutes}:${seconds}`;
+
+            const nextLineTime = i < transcript.length - 1 && transcript[i+1].speaker !== 'System'
+                ? transcript[i+1].timestamp - startTime 
+                : Infinity;
+            
+            const isActive = line.speaker !== 'System' && playbackTime >= displayTime && playbackTime < nextLineTime;
+
+            return (
+                <div key={i} className={`flex items-start gap-3 ${line.speaker === 'You' ? 'justify-end' : ''}`}>
+                    {line.speaker === 'Agent' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-teal/20 text-brand-teal flex items-center justify-center"><Bot size={18} /></div>}
+                    
+                    <div className="flex flex-col">
+                        <div className={`p-3 rounded-lg max-w-lg transition-colors duration-200 ${
+                            line.speaker === 'System' ? 'text-center w-full bg-transparent text-eburon-muted text-xs' :
+                            line.speaker === 'You' ? (isActive ? 'bg-primary/20' : 'bg-eburon-border') :
+                            (isActive ? 'bg-brand-teal/20' : 'bg-eburon-bg border border-eburon-border')
+                        }`}>
+                            <p>{line.text}</p>
+                        </div>
+                        {line.speaker !== 'System' && (
+                            <span className={`text-xs text-eburon-muted mt-1 ${line.speaker === 'You' ? 'text-right' : 'text-left'}`}>
+                                {timestampStr}
+                            </span>
+                        )}
+                    </div>
+                    
+                    {line.speaker === 'You' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-eburon-border flex items-center justify-center"><User size={18} /></div>}
+                </div>
+            );
+        })}
+    </div>
+);
+
 const CallHistoryPage: React.FC = () => {
     // --- Combined State ---
     const [isSimulating, setIsSimulating] = useState(false);
@@ -132,6 +178,9 @@ const CallHistoryPage: React.FC = () => {
     const { callHistory, selectedAgent, addCallToHistory, addNotification } = useAppContext();
     const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [playbackTime, setPlaybackTime] = useState(0); // in ms
+    const audioRef = useRef<HTMLAudioElement>(null);
+
 
     const sortedAndFilteredHistory = useMemo(() => {
         return [...callHistory]
@@ -150,6 +199,13 @@ const CallHistoryPage: React.FC = () => {
         }
     }, [sortedAndFilteredHistory, selectedCall, isSimulating]);
     
+    useEffect(() => {
+        setPlaybackTime(0);
+        if (audioRef.current) {
+            audioRef.current.currentTime = 0;
+        }
+    }, [selectedCall]);
+
     // --- Simulation View State (from former Calls.tsx) ---
     const [callStatus, setCallStatus] = useState<'idle' | 'connecting' | 'connected' | 'ended'>('idle');
     const [ivrState, setIvrState] = useState<IvrState>('idle');
@@ -314,20 +370,6 @@ const CallHistoryPage: React.FC = () => {
     // --- Render Functions ---
 
     const renderHistoryView = () => {
-        const HistoryTranscriptView: React.FC<{ transcript: TranscriptLine[] }> = ({ transcript }) => (
-            <div aria-live="polite" className="flex-1 space-y-3 overflow-y-auto pr-2 bg-eburon-bg p-4 rounded-lg">
-                {transcript.map((line, i) => (
-                    <div key={i} className={`flex items-start gap-3 ${line.speaker === 'You' ? 'justify-end' : ''}`}>
-                        {line.speaker === 'Agent' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-teal/20 text-brand-teal flex items-center justify-center"><Bot size={18} /></div>}
-                        <div className={`p-3 rounded-lg max-w-lg ${line.speaker === 'You' ? 'bg-eburon-border' : 'bg-eburon-bg border border-eburon-border'} ${line.speaker === 'System' ? 'text-center w-full bg-transparent text-eburon-muted text-xs' : ''}`}>
-                            <p>{line.text}</p>
-                        </div>
-                        {line.speaker === 'You' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-eburon-border flex items-center justify-center"><User size={18} /></div>}
-                    </div>
-                ))}
-            </div>
-        );
-
         return (
             <div className="p-6 h-full flex flex-col">
                 <div className="flex justify-between items-center mb-6 flex-shrink-0">
@@ -340,13 +382,16 @@ const CallHistoryPage: React.FC = () => {
                 <div className="flex-1 bg-eburon-card border border-eburon-border rounded-xl flex overflow-hidden">
                     <aside className="w-full md:w-1/3 border-r border-eburon-border flex-col md:flex hidden">
                         <div className="p-4 border-b border-eburon-border">
-                            <input
-                                type="text"
-                                placeholder="Search by agent name..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full bg-eburon-bg border border-eburon-border rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-brand-teal focus:outline-none"
-                            />
+                            <div className="relative">
+                                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-eburon-muted" />
+                                <input
+                                    type="text"
+                                    placeholder="Search by agent name..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full bg-eburon-bg border border-eburon-border rounded-lg pl-10 pr-3 py-1.5 focus:ring-2 focus:ring-brand-teal focus:outline-none"
+                                />
+                            </div>
                         </div>
                         <div className="flex-1 overflow-y-auto">
                             {sortedAndFilteredHistory.length > 0 ? (
@@ -377,12 +422,35 @@ const CallHistoryPage: React.FC = () => {
                                     </div>
                                 </div>
                                 <div className="flex-shrink-0 mb-4">
-                                    <h3 className="text-sm font-semibold text-eburon-muted mb-2">Call Recording (User Audio)</h3>
-                                    <audio controls src={selectedCall.recordingUrl} className="w-full h-10">Your browser does not support the audio element.</audio>
+                                    <h3 className="text-sm font-semibold text-eburon-muted mb-2">Call Recording</h3>
+                                    <audio
+                                        ref={audioRef}
+                                        controls
+                                        key={selectedCall.id} // Re-mount component on call change
+                                        src={selectedCall.recordingUrl}
+                                        className="w-full h-10"
+                                        onTimeUpdate={() => {
+                                            if (audioRef.current) {
+                                                setPlaybackTime(audioRef.current.currentTime * 1000);
+                                            }
+                                        }}
+                                        onEnded={() => setPlaybackTime(0)}
+                                        onPause={() => {
+                                            if (audioRef.current && !audioRef.current.ended) {
+                                                setPlaybackTime(audioRef.current.currentTime * 1000);
+                                            }
+                                        }}
+                                    >
+                                        Your browser does not support the audio element.
+                                    </audio>
                                 </div>
                                 <div className="flex-1 flex flex-col overflow-hidden">
                                     <h3 className="text-sm font-semibold text-eburon-muted mb-2">Transcript</h3>
-                                    <HistoryTranscriptView transcript={selectedCall.transcript} />
+                                    <HistoryTranscriptView
+                                        transcript={selectedCall.transcript}
+                                        startTime={selectedCall.startTime}
+                                        playbackTime={playbackTime}
+                                    />
                                 </div>
                             </>
                         ) : (
